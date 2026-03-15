@@ -10,3 +10,5 @@ pystray
 Pillow
 psutil
 pyperclip
+pycaw
+comtypes

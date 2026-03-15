@@ -37,6 +37,12 @@ Configuration via env vars:
   PEERS             - Comma-separated peer URLs (e.g. http://192.168.0.172:7790,http://192.168.0.67:7790)
   SPEAKER_SCORE     - Speaker quality 0.0-1.0 (default: 1.0); used for Follow-Me TTS delegation
   CONVERSATION_TIMEOUT - Seconds to stay in multi-turn mode after response (default: 8)
+  DUCKING_LEVEL     - Volume level for other apps while speaking 0.0-1.0 (default: 0.25)
+  DUCKING_ENABLED   - Enable audio ducking 0/1 (default: 1)
+  DISCOVERY_ENABLED - Enable auto-discovery via UDP broadcast 0/1 (default: 1)
+  DISCOVERY_PORT    - UDP port for auto-discovery (default: 7791)
+  DISCOVERY_INTERVAL- Seconds between discovery broadcasts (default: 15)
+  PEERS_CONFIG      - Smart peer config: "lan_ip|tailscale_ip,..." with LAN-priority fallback
 """
 
 import asyncio
@@ -105,6 +111,17 @@ try:
 except ImportError:
     HAS_CLIPBOARD = False
 
+# Audio ducking: lower other apps' volume while Klatsch speaks (Windows only)
+HAS_PYCAW = False
+if sys.platform == "win32":
+    try:
+        from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        from comtypes import CLSCTX_ALL
+
+        HAS_PYCAW = True
+    except ImportError:
+        pass
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ──────────────────────────────────────────────────────────────────────────────
@@ -147,6 +164,19 @@ SPEAKER_SCORE = float(
 CONVERSATION_TIMEOUT = float(
     os.getenv("CONVERSATION_TIMEOUT", "8")
 )  # multi-turn window
+
+# Audio ducking: reduce other apps' volume when Klatsch speaks
+DUCKING_LEVEL = float(os.getenv("DUCKING_LEVEL", "0.25"))  # 25% of original
+DUCKING_ENABLED = os.getenv("DUCKING_ENABLED", "1") != "0"
+
+# Auto-discovery: Klatsch instances announce via UDP broadcast
+DISCOVERY_PORT = int(os.getenv("DISCOVERY_PORT", "7791"))
+DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "15"))  # seconds
+DISCOVERY_ENABLED = os.getenv("DISCOVERY_ENABLED", "1") != "0"
+
+# Tenant isolation: hash of GATEWAY_URL so only same-gateway peers pair up
+import hashlib
+TENANT_ID = hashlib.sha256(GATEWAY_URL.encode()).hexdigest()[:12]
 
 # Interrupt keywords that cancel TTS playback
 INTERRUPT_WORDS = {
@@ -510,6 +540,7 @@ class PeerHandler(BaseHTTPRequestHandler):
                     {
                         "host": HOST_NAME,
                         "app": "klatsch",
+                        "tenant": TENANT_ID,
                         "listening": state.listening_enabled,
                         "presence": state.presence_active,
                     }
@@ -1524,17 +1555,26 @@ def _handle_local_command(text: str) -> bool:
 
 
 def build_peer_name_map():
-    """Query all peers for their host name and build name→URL map."""
+    """Query all peers for their host name and build name→URL map.
+    Also verifies tenant (gateway) matches — removes peers from other gateways."""
+    peers_to_remove = []
     for peer_url in PEERS:
         try:
             resp = requests.get(f"{peer_url}/health", timeout=1)
             if resp.status_code == 200:
                 data = resp.json()
                 name = data.get("host", peer_url).lower()
+                peer_tenant = data.get("tenant", "")
+                if peer_tenant and peer_tenant != TENANT_ID:
+                    log.warning(f"Peer {name} ({peer_url}) has different gateway — skipping")
+                    peers_to_remove.append(peer_url)
+                    continue
                 PEER_NAME_MAP[name] = peer_url
                 log.info(f"Peer map: {name} → {peer_url}")
         except Exception:
             log.debug(f"Peer {peer_url} unreachable for name map")
+    for url in peers_to_remove:
+        PEERS.remove(url)
 
 
 def resolve_peers():
@@ -1653,6 +1693,141 @@ def send_to_gateway(message: str) -> str:
     except Exception as e:
         log.error(f"Gateway error: {e}")
         return "Ein Fehler ist aufgetreten."
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Audio Ducking — lower other apps' volume while Klatsch speaks (Windows)
+# ──────────────────────────────────────────────────────────────────────────────
+_ducked_sessions: dict = {}  # session_id -> original_volume
+
+
+def duck_other_audio():
+    """Lower volume of all other audio sessions to DUCKING_LEVEL (e.g. 0.25)."""
+    if not HAS_PYCAW or not DUCKING_ENABLED:
+        return
+    try:
+        sessions = AudioUtilities.GetAllSessions()
+        our_pid = os.getpid()
+        for session in sessions:
+            if session.Process and session.Process.pid != our_pid:
+                vol = session._ctl.QueryInterface(ISimpleAudioVolume)
+                current = vol.GetMasterVolume()
+                if current > DUCKING_LEVEL:
+                    sid = session.Process.pid
+                    _ducked_sessions[sid] = current
+                    vol.SetMasterVolume(DUCKING_LEVEL, None)
+                    log.debug(f"Ducked PID {sid}: {current:.2f} → {DUCKING_LEVEL}")
+    except Exception as exc:
+        log.debug(f"Ducking error: {exc}")
+
+
+def unduck_other_audio():
+    """Restore original volume for all previously ducked sessions."""
+    if not HAS_PYCAW or not _ducked_sessions:
+        return
+    try:
+        sessions = AudioUtilities.GetAllSessions()
+        for session in sessions:
+            if session.Process and session.Process.pid in _ducked_sessions:
+                vol = session._ctl.QueryInterface(ISimpleAudioVolume)
+                original = _ducked_sessions.pop(session.Process.pid)
+                vol.SetMasterVolume(original, None)
+                log.debug(f"Unducked PID {session.Process.pid}: → {original:.2f}")
+    except Exception as exc:
+        log.debug(f"Unduck error: {exc}")
+    _ducked_sessions.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Auto-Discovery — Klatsch instances find each other via UDP broadcast
+# ──────────────────────────────────────────────────────────────────────────────
+_discovered_peers: dict = {}  # "ip:port" -> {"host": ..., "tenant": ..., "last_seen": ...}
+
+
+def discovery_announce():
+    """Send periodic UDP broadcast so other Klatsch instances can find us."""
+    import socket as _socket
+    msg = json.dumps({
+        "app": "klatsch",
+        "host": HOST_NAME,
+        "port": PEER_PORT,
+        "tenant": TENANT_ID,
+        "speaker_score": SPEAKER_SCORE,
+    }).encode()
+    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_BROADCAST, 1)
+    sock.settimeout(0.5)
+    while state.running:
+        try:
+            sock.sendto(msg, ("<broadcast>", DISCOVERY_PORT))
+        except Exception:
+            pass
+        time.sleep(DISCOVERY_INTERVAL)
+    sock.close()
+
+
+def discovery_listener():
+    """Listen for UDP broadcasts from other Klatsch instances."""
+    import socket as _socket
+    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    sock.settimeout(2.0)
+    try:
+        sock.bind(("", DISCOVERY_PORT))
+    except OSError as exc:
+        log.warning(f"Discovery listener bind failed: {exc}")
+        return
+    log.info(f"Discovery listener on UDP :{DISCOVERY_PORT} (tenant={TENANT_ID})")
+    while state.running:
+        try:
+            data, addr = sock.recvfrom(1024)
+            msg = json.loads(data.decode())
+            if msg.get("app") != "klatsch":
+                continue
+            peer_host = msg.get("host", "unknown")
+            peer_port = msg.get("port", PEER_PORT)
+            peer_tenant = msg.get("tenant", "")
+            peer_ip = addr[0]
+            # Ignore our own broadcasts
+            if peer_host == HOST_NAME:
+                continue
+            peer_key = f"{peer_ip}:{peer_port}"
+            peer_url = f"http://{peer_ip}:{peer_port}"
+            # Tenant isolation: only auto-pair with same gateway
+            if peer_tenant != TENANT_ID:
+                if peer_key not in _discovered_peers or _discovered_peers[peer_key].get("tenant") != peer_tenant:
+                    log.info(f"Discovery: {peer_host} ({peer_ip}) has different gateway — ignoring")
+                    _discovered_peers[peer_key] = {"host": peer_host, "tenant": peer_tenant, "last_seen": time.time(), "foreign": True}
+                continue
+            # Same tenant — auto-add as peer if not already known
+            _discovered_peers[peer_key] = {"host": peer_host, "tenant": peer_tenant, "last_seen": time.time(), "foreign": False}
+            if peer_url not in PEERS:
+                PEERS.append(peer_url)
+                log.info(f"Discovery: auto-added peer {peer_host} at {peer_url} (same gateway)")
+                PEER_NAME_MAP[peer_host.lower()] = peer_url
+        except _socket.timeout:
+            continue
+        except Exception as exc:
+            log.debug(f"Discovery error: {exc}")
+    sock.close()
+
+
+def discovery_cleanup():
+    """Remove stale discovered peers (not seen for 3x discovery interval)."""
+    stale_threshold = DISCOVERY_INTERVAL * 3
+    while state.running:
+        time.sleep(DISCOVERY_INTERVAL)
+        now = time.time()
+        stale = [k for k, v in _discovered_peers.items()
+                 if now - v["last_seen"] > stale_threshold and not v.get("foreign")]
+        for key in stale:
+            info = _discovered_peers.pop(key, {})
+            peer_url = f"http://{key}"
+            if peer_url in PEERS:
+                PEERS.remove(peer_url)
+                host = info.get("host", key).lower()
+                PEER_NAME_MAP.pop(host, None)
+                log.info(f"Discovery: removed stale peer {info.get('host', key)} ({peer_url})")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1817,13 +1992,15 @@ def speak_or_delegate(text: str):
 
 
 def speak(text: str):
-    """Speak text via edge-tts (blocking). Can be interrupted or paused."""
+    """Speak text via edge-tts (blocking). Can be interrupted or paused.
+    Ducks other audio sessions to DUCKING_LEVEL while speaking."""
     if not text.strip():
         return
     state.is_speaking = True
     state.tts_interrupt = False
     state.tts_paused = False
     state.tts_resume_event.set()  # ensure not stuck in paused state
+    duck_other_audio()
     print(f"{Fore.CYAN}🔊 {HOST_NAME}:{Style.RESET_ALL} {text}")
     try:
         if HAS_EDGE_TTS:
@@ -1844,6 +2021,7 @@ def speak(text: str):
     except Exception as e:
         log.error(f"TTS error: {e}")
     finally:
+        unduck_other_audio()
         state.is_speaking = False
 
 
@@ -2496,6 +2674,19 @@ def main():
         threading.Thread(target=peer_resolver_loop, daemon=True).start()
     else:
         log.info("Follow-Me: no peers configured (set PEERS_CONFIG or PEERS env var)")
+
+    # Auto-discovery: find other Klatsch instances on the network
+    if DISCOVERY_ENABLED:
+        log.info(f"Auto-discovery enabled (UDP :{DISCOVERY_PORT}, tenant={TENANT_ID})")
+        threading.Thread(target=discovery_announce, daemon=True).start()
+        threading.Thread(target=discovery_listener, daemon=True).start()
+        threading.Thread(target=discovery_cleanup, daemon=True).start()
+
+    # Audio ducking status
+    if HAS_PYCAW and DUCKING_ENABLED:
+        log.info(f"Audio ducking enabled: other apps → {int(DUCKING_LEVEL * 100)}% while speaking")
+    elif not HAS_PYCAW and DUCKING_ENABLED:
+        log.info("Audio ducking: pycaw not available (pip install pycaw comtypes)")
 
     banner = f"Klatsch 🐾  ·  {HOST_NAME}"
     pad = len(banner) + 4
