@@ -12,3 +12,6 @@ psutil
 pyperclip
 pycaw
 comtypes
+winotify
+websockets
+keyboard

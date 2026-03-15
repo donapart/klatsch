@@ -45,6 +45,8 @@ Configuration via env vars:
   PEERS_CONFIG      - Smart peer config: "lan_ip|tailscale_ip,..." with LAN-priority fallback
 """
 
+KLATSCH_VERSION = "2025.7.12"
+
 import asyncio
 import argparse
 import io
@@ -123,57 +125,137 @@ if sys.platform == "win32":
     except ImportError:
         pass
 
+# Windows toast notifications
+HAS_WINOTIFY = False
+if sys.platform == "win32":
+    try:
+        from winotify import Notification, audio
+
+        HAS_WINOTIFY = True
+    except ImportError:
+        pass
+
+# WebSocket for live dashboard
+HAS_WEBSOCKETS = False
+try:
+    import websockets
+    import websockets.asyncio.server
+
+    HAS_WEBSOCKETS = True
+except ImportError:
+    pass
+
+# Global hotkeys
+HAS_KEYBOARD = False
+try:
+    import keyboard as kbd_module
+
+    HAS_KEYBOARD = True
+except ImportError:
+    pass
+
+_TOAST_ICON = str(Path(__file__).resolve().parent / "klatsch.ico")
+if not Path(_TOAST_ICON).exists():
+    _TOAST_ICON = ""
+
+
+def show_toast(title: str, message: str) -> None:
+    """Show a Windows toast notification (non-blocking)."""
+    if not HAS_WINOTIFY:
+        return
+    try:
+        toast = Notification(
+            app_id="Klatsch 🐾",
+            title=title,
+            msg=message,
+            icon=_TOAST_ICON if _TOAST_ICON else "",
+        )
+        toast.set_audio(audio.Default, loop=False)
+        toast.show()
+    except Exception:
+        pass  # notification is best-effort
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuration
+# Configuration — settings.json → env vars → hardcoded defaults
 # ──────────────────────────────────────────────────────────────────────────────
-GATEWAY_URL = os.getenv("GATEWAY_URL", "http://192.168.0.67:18789")
-GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "opensesame")
-AGENT_ID = os.getenv("AGENT_ID", "main")
+def _load_settings_json() -> dict:
+    """Load ~/.klatsch/settings.json if it exists. Returns empty dict on failure."""
+    settings_path = Path.home() / ".klatsch" / "settings.json"
+    if settings_path.exists():
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+_SETTINGS = _load_settings_json()
+
+def _cfg(env_key: str, json_key: str, default: str) -> str:
+    """Resolve config: env var > settings.json > hardcoded default."""
+    val = os.getenv(env_key)
+    if val is not None:
+        return val
+    return str(_SETTINGS.get(json_key, default))
+
+GATEWAY_URL = _cfg("GATEWAY_URL", "gateway_url", "http://192.168.0.67:18789")
+GATEWAY_TOKEN = _cfg("GATEWAY_TOKEN", "gateway_token", "opensesame")
+AGENT_ID = _cfg("AGENT_ID", "agent_id", "main")
 WAKE_WORDS = [
     w.strip().lower()
-    for w in os.getenv("WAKE_WORDS", "hey klatsch,klatsch").split(",")
+    for w in _cfg("WAKE_WORDS", "wake_words", "hey klatsch,klatsch").split(",")
     if w.strip()
 ]
-TTS_VOICE = os.getenv("TTS_VOICE", "de-DE-ConradNeural")
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
-MIC_THRESHOLD = float(os.getenv("MIC_THRESHOLD", "0.015"))
-SILENCE_SECONDS = float(os.getenv("SILENCE_SECONDS", "1.5"))
+TTS_VOICE = _cfg("TTS_VOICE", "tts_voice", "de-DE-ConradNeural")
+WHISPER_MODEL_SIZE = _cfg("WHISPER_MODEL", "whisper_model", "base")
+MIC_THRESHOLD = float(_cfg("MIC_THRESHOLD", "mic_threshold", "0.015"))
+SILENCE_SECONDS = float(_cfg("SILENCE_SECONDS", "silence_seconds", "1.5"))
 SAMPLE_RATE = 16000
 CHANNELS = 1
 BLOCK_SIZE = 1280  # 80ms at 16kHz — good for wake word detection
 
-# Audio device selection (set via CLI args or env vars)
-INPUT_DEVICE = os.getenv("INPUT_DEVICE")
-OUTPUT_DEVICE = os.getenv("OUTPUT_DEVICE")
-VOLUME = int(os.getenv("VOLUME", "100"))
+# Audio device selection (set via CLI args, env vars, or settings.json)
+INPUT_DEVICE = _cfg("INPUT_DEVICE", "input_device", "") or None
+OUTPUT_DEVICE = _cfg("OUTPUT_DEVICE", "output_device", "") or None
+VOLUME = int(_cfg("VOLUME", "volume", "100"))
 import platform
 
-HOST_NAME = os.getenv("HOST_NAME", platform.node().upper() or "UNKNOWN")
+HOST_NAME = _cfg("HOST_NAME", "host_name", "") or platform.node().upper() or "UNKNOWN"
 
 # Peer coordination for Follow-Me output routing
-PEER_PORT = int(os.getenv("PEER_PORT", "7790"))
+PEER_PORT = int(_cfg("PEER_PORT", "peer_port", "7790"))
 # Smart peer config: comma-separated entries of "lan_ip|tailscale_ip" (or plain URLs)
 # Example: PEERS_CONFIG=192.168.0.172|100.75.39.4,192.168.0.50|100.75.10.10
 # Falls back to legacy PEERS env var (comma-separated URLs) if PEERS_CONFIG not set.
-PEERS_CONFIG_RAW = os.getenv("PEERS_CONFIG", "")
+PEERS_CONFIG_RAW = _cfg("PEERS_CONFIG", "peers_config", "")
 PEERS: list[str] = []  # populated by resolve_peers() at startup
-_PEERS_STATIC = [p.strip() for p in os.getenv("PEERS", "").split(",") if p.strip()]
-PEER_RESOLVE_INTERVAL = int(os.getenv("PEER_RESOLVE_INTERVAL", "60"))  # seconds
+_PEERS_STATIC = [p.strip() for p in _cfg("PEERS", "peers", "").split(",") if p.strip()]
+PEER_RESOLVE_INTERVAL = int(_cfg("PEER_RESOLVE_INTERVAL", "peer_resolve_interval", "60"))  # seconds
 SPEAKER_SCORE = float(
-    os.getenv("SPEAKER_SCORE", "1.0")
+    _cfg("SPEAKER_SCORE", "speaker_score", "1.0")
 )  # 0.0=no speaker, 1.0=great speaker
 CONVERSATION_TIMEOUT = float(
-    os.getenv("CONVERSATION_TIMEOUT", "8")
+    _cfg("CONVERSATION_TIMEOUT", "conversation_timeout", "8")
 )  # multi-turn window
 
 # Audio ducking: reduce other apps' volume when Klatsch speaks
-DUCKING_LEVEL = float(os.getenv("DUCKING_LEVEL", "0.25"))  # 25% of original
-DUCKING_ENABLED = os.getenv("DUCKING_ENABLED", "1") != "0"
+DUCKING_LEVEL = float(_cfg("DUCKING_LEVEL", "ducking_level", "0.25"))  # 25% of original
+DUCKING_ENABLED = _cfg("DUCKING_ENABLED", "ducking_enabled", "1") != "0"
 
 # Auto-discovery: Klatsch instances announce via UDP broadcast
-DISCOVERY_PORT = int(os.getenv("DISCOVERY_PORT", "7791"))
-DISCOVERY_INTERVAL = int(os.getenv("DISCOVERY_INTERVAL", "15"))  # seconds
-DISCOVERY_ENABLED = os.getenv("DISCOVERY_ENABLED", "1") != "0"
+DISCOVERY_PORT = int(_cfg("DISCOVERY_PORT", "discovery_port", "7791"))
+DISCOVERY_INTERVAL = int(_cfg("DISCOVERY_INTERVAL", "discovery_interval", "15"))  # seconds
+DISCOVERY_ENABLED = _cfg("DISCOVERY_ENABLED", "discovery_enabled", "1") != "0"
+
+# Dashboard WebSocket port
+DASHBOARD_PORT = int(_cfg("DASHBOARD_PORT", "dashboard_port", "7792"))
+
+# Global hotkeys (set to empty string to disable)
+HOTKEY_TOGGLE_LISTEN = _cfg("HOTKEY_TOGGLE_LISTEN", "hotkey_toggle_listen", "ctrl+shift+k")
+HOTKEY_MUTE = _cfg("HOTKEY_MUTE", "hotkey_mute", "ctrl+shift+m")
+HOTKEY_DASHBOARD = _cfg("HOTKEY_DASHBOARD", "hotkey_dashboard", "ctrl+shift+d")
+HOTKEY_SETTINGS = _cfg("HOTKEY_SETTINGS", "hotkey_settings", "ctrl+shift+comma")
 
 # Tenant isolation: hash of GATEWAY_URL so only same-gateway peers pair up
 import hashlib
@@ -520,6 +602,229 @@ state = AssistantState()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Dashboard: WebSocket live-status server
+# ──────────────────────────────────────────────────────────────────────────────
+_dashboard_event_log: list[dict] = []  # ring buffer of recent events
+_DASHBOARD_MAX_EVENTS = 200
+_dashboard_clients: set = set()  # connected websocket clients
+_discovered_peers: dict = {}  # forward declaration; populated by discovery_listener
+
+
+def dashboard_event(kind: str, detail: str = "") -> None:
+    """Record an event for the dashboard and push to connected clients."""
+    entry = {"ts": time.time(), "kind": kind, "detail": detail}
+    _dashboard_event_log.append(entry)
+    if len(_dashboard_event_log) > _DASHBOARD_MAX_EVENTS:
+        _dashboard_event_log.pop(0)
+    # Push to all connected WebSocket clients
+    if HAS_WEBSOCKETS and _dashboard_clients:
+        msg = json.dumps({"type": "event", "event": entry})
+        dead = set()
+        for ws in list(_dashboard_clients):
+            try:
+                ws.send_nowait(msg)
+            except Exception:
+                dead.add(ws)
+        _dashboard_clients -= dead
+
+
+def _dashboard_snapshot() -> dict:
+    """Build a full state snapshot for the dashboard."""
+    peers_info = []
+    # Build reverse map url → name from PEER_NAME_MAP (which is name → url)
+    url_to_name = {v: k for k, v in PEER_NAME_MAP.items()}
+    for url in PEERS:
+        name = url_to_name.get(url, url)
+        peers_info.append({"url": url, "name": name})
+    # Discovered peers
+    for url, info in list(_discovered_peers.items()):
+        if url not in PEERS:
+            peers_info.append({"url": url, "name": info.get("host", url), "discovered": True})
+    return {
+        "type": "snapshot",
+        "host": HOST_NAME,
+        "version": KLATSCH_VERSION,
+        "listening": state.listening_enabled,
+        "speaking": state.is_speaking,
+        "presence": state.presence_active,
+        "conversation_mode": state.conversation_mode,
+        "follow_me": state.follow_me_enabled,
+        "volume": VOLUME,
+        "peers": peers_info,
+        "events": _dashboard_event_log[-50:],
+        "reminders": len(state.reminders),
+        "discovery_enabled": DISCOVERY_ENABLED,
+        "tenant": TENANT_ID,
+    }
+
+
+async def _dashboard_ws_handler(websocket):
+    """Handle a single WebSocket client connection."""
+    _dashboard_clients.add(websocket)
+    try:
+        # Send initial snapshot
+        await websocket.send(json.dumps(_dashboard_snapshot()))
+        # Keep alive — send snapshots every 2s
+        while True:
+            await asyncio.sleep(2)
+            await websocket.send(json.dumps(_dashboard_snapshot()))
+    except Exception:
+        pass
+    finally:
+        _dashboard_clients.discard(websocket)
+
+
+def _run_dashboard_server():
+    """Run the WebSocket dashboard server in a background thread."""
+    if not HAS_WEBSOCKETS:
+        log.info("Dashboard: websockets not installed (pip install websockets)")
+        return
+
+    async def serve():
+        async with websockets.asyncio.server.serve(
+            _dashboard_ws_handler, "0.0.0.0", DASHBOARD_PORT
+        ):
+            log.info(f"Dashboard WebSocket on ws://0.0.0.0:{DASHBOARD_PORT}")
+            await asyncio.Future()  # run forever
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(serve())
+
+
+_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klatsch Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:20px}
+h1{color:#00b4a0;margin-bottom:16px;font-size:1.6rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.card{background:#16213e;border-radius:12px;padding:16px;border:1px solid #0f3460}
+.card h2{font-size:1rem;color:#00b4a0;margin-bottom:10px}
+.badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:.8rem;margin:2px}
+.on{background:#00b4a0;color:#000}.off{background:#444;color:#aaa}
+.peer{background:#0f3460;border-radius:8px;padding:8px 12px;margin:4px 0;font-size:.85rem}
+.peer .name{font-weight:bold;color:#e0e0e0}.peer .url{color:#888;font-size:.75rem}
+.peer.discovered{border-left:3px solid #f0c040}
+#events{max-height:350px;overflow-y:auto;font-family:'Cascadia Code',monospace;font-size:.78rem;line-height:1.5}
+.evt{padding:2px 0;border-bottom:1px solid #0f3460}
+.evt .ts{color:#555;margin-right:8px}.evt .kind{color:#00b4a0;font-weight:bold;margin-right:6px}
+.status-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+#conn{font-size:.75rem;color:#888;margin-top:10px}
+.vol-bar{height:6px;background:#0f3460;border-radius:3px;margin-top:6px}
+.vol-fill{height:100%;background:#00b4a0;border-radius:3px;transition:width .3s}
+</style>
+</head>
+<body>
+<h1>&#x1F43E; Klatsch Dashboard</h1>
+<div class="grid">
+ <div class="card">
+  <h2>Status</h2>
+  <div id="host" style="font-size:1.1rem;font-weight:bold;margin-bottom:8px"></div>
+  <div class="status-row" id="badges"></div>
+  <div style="margin-top:8px;font-size:.85rem">Volume: <span id="vol-num">—</span>%</div>
+  <div class="vol-bar"><div class="vol-fill" id="vol-bar" style="width:0%"></div></div>
+ </div>
+ <div class="card">
+  <h2>Peers</h2>
+  <div id="peers"><em>keine Peers</em></div>
+ </div>
+</div>
+<div class="card">
+ <h2>Events</h2>
+ <div id="events"></div>
+</div>
+<div id="conn">Verbinde...</div>
+<script>
+const wsPort = location.port ? parseInt(location.port) : 7790;
+const wsUrl = 'ws://' + location.hostname + ':' + (wsPort + 2);
+let ws, retryMs = 1000;
+
+function badge(label, on) {
+ return '<span class="badge ' + (on ? 'on' : 'off') + '">' + label + '</span>';
+}
+
+function fmtTs(epoch) {
+ const d = new Date(epoch * 1000);
+ return d.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function render(snap) {
+ document.getElementById('host').textContent = (snap.host || '—') + '  v' + (snap.version || '?');
+ const b = document.getElementById('badges');
+ b.innerHTML = badge('Listening', snap.listening)
+              + badge('Speaking', snap.speaking)
+              + badge('Presence', snap.presence)
+              + badge('Conversation', snap.conversation_mode)
+              + badge('Follow-Me', snap.follow_me)
+              + badge('Discovery', snap.discovery_enabled);
+ document.getElementById('vol-num').textContent = snap.volume;
+ document.getElementById('vol-bar').style.width = snap.volume + '%';
+
+ const pd = document.getElementById('peers');
+ if (!snap.peers || snap.peers.length === 0) {
+  pd.innerHTML = '<em>keine Peers</em>';
+ } else {
+  pd.innerHTML = snap.peers.map(p =>
+   '<div class="peer' + (p.discovered ? ' discovered' : '') + '">'
+   + '<span class="name">' + (p.name || '?') + '</span> '
+   + '<span class="url">' + p.url + '</span>'
+   + '</div>'
+  ).join('');
+ }
+}
+
+function renderEvents(evts) {
+ const el = document.getElementById('events');
+ el.innerHTML = evts.map(e =>
+  '<div class="evt"><span class="ts">' + fmtTs(e.ts) + '</span>'
+  + '<span class="kind">' + e.kind + '</span>'
+  + '<span class="detail">' + (e.detail || '') + '</span></div>'
+ ).join('');
+ el.scrollTop = el.scrollHeight;
+}
+
+function appendEvent(e) {
+ const el = document.getElementById('events');
+ el.innerHTML += '<div class="evt"><span class="ts">' + fmtTs(e.ts) + '</span>'
+  + '<span class="kind">' + e.kind + '</span>'
+  + '<span class="detail">' + (e.detail || '') + '</span></div>';
+ el.scrollTop = el.scrollHeight;
+}
+
+function connect() {
+ ws = new WebSocket(wsUrl);
+ ws.onopen = () => {
+  document.getElementById('conn').textContent = 'Verbunden (' + wsUrl + ')';
+  retryMs = 1000;
+ };
+ ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data);
+  if (msg.type === 'snapshot') {
+   render(msg);
+   if (msg.events) renderEvents(msg.events);
+  } else if (msg.type === 'event') {
+   appendEvent(msg.event);
+  }
+ };
+ ws.onclose = () => {
+  document.getElementById('conn').textContent = 'Getrennt — reconnect in ' + (retryMs/1000) + 's...';
+  setTimeout(connect, retryMs);
+  retryMs = Math.min(retryMs * 2, 30000);
+ };
+ ws.onerror = () => ws.close();
+}
+connect();
+</script>
+</body>
+</html>"""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Follow-Me: Peer Coordination
 # ──────────────────────────────────────────────────────────────────────────────
 WAKE_CLAIM_WINDOW = 1.0  # seconds: claims within this window compete
@@ -541,6 +846,7 @@ class PeerHandler(BaseHTTPRequestHandler):
                     {
                         "host": HOST_NAME,
                         "app": "klatsch",
+                        "version": KLATSCH_VERSION,
                         "tenant": TENANT_ID,
                         "listening": state.listening_enabled,
                         "presence": state.presence_active,
@@ -586,6 +892,11 @@ class PeerHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+        elif self.path == "/dashboard":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(_DASHBOARD_HTML.encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -616,6 +927,8 @@ class PeerHandler(BaseHTTPRequestHandler):
             source = body.get("from", body.get("source", "System"))
             if text:
                 notification = f"{source} sagt: {text}" if source != "System" else text
+                show_toast(f"🔔 {source}", text)
+                dashboard_event("notify", f"{source}: {text}")
                 threading.Thread(
                     target=speak, args=(notification,), daemon=True
                 ).start()
@@ -625,6 +938,8 @@ class PeerHandler(BaseHTTPRequestHandler):
             sender = body.get("from", "Jemand")
             if text:
                 announcement = f"Durchsage von {sender}: {text}"
+                show_toast(f"📢 Intercom — {sender}", text)
+                dashboard_event("intercom", f"{sender}: {text}")
                 threading.Thread(
                     target=speak, args=(announcement,), daemon=True
                 ).start()
@@ -1557,7 +1872,8 @@ def _handle_local_command(text: str) -> bool:
 
 def build_peer_name_map():
     """Query all peers for their host name and build name→URL map.
-    Also verifies tenant (gateway) matches — removes peers from other gateways."""
+    Also verifies tenant (gateway) matches — removes peers from other gateways.
+    Checks peer versions for update notifications."""
     peers_to_remove = []
     for peer_url in PEERS:
         try:
@@ -1571,6 +1887,15 @@ def build_peer_name_map():
                     peers_to_remove.append(peer_url)
                     continue
                 PEER_NAME_MAP[name] = peer_url
+                # Version check: notify if peer is running a newer version
+                peer_version = data.get("version", "")
+                if peer_version and peer_version > KLATSCH_VERSION:
+                    log.info(f"Peer {name} has newer version {peer_version} (ours: {KLATSCH_VERSION})")
+                    show_toast(
+                        "Klatsch Update verfügbar",
+                        f"{name} läuft v{peer_version} (du: v{KLATSCH_VERSION})",
+                    )
+                    dashboard_event("update_available", f"{name}: v{peer_version}")
                 log.info(f"Peer map: {name} → {peer_url}")
         except Exception:
             log.debug(f"Peer {peer_url} unreachable for name map")
@@ -1683,7 +2008,9 @@ def send_to_gateway(message: str) -> str:
         data = resp.json()
         choices = data.get("choices", [])
         if choices:
-            return choices[0].get("message", {}).get("content", "")
+            answer = choices[0].get("message", {}).get("content", "")
+            dashboard_event("gateway_reply", answer[:80])
+            return answer
         return ""
     except requests.exceptions.ConnectionError:
         log.error(f"Cannot connect to gateway at {GATEWAY_URL}")
@@ -1742,7 +2069,7 @@ def unduck_other_audio():
 # ──────────────────────────────────────────────────────────────────────────────
 # Auto-Discovery — Klatsch instances find each other via UDP broadcast
 # ──────────────────────────────────────────────────────────────────────────────
-_discovered_peers: dict = {}  # "ip:port" -> {"host": ..., "tenant": ..., "last_seen": ...}
+# _discovered_peers defined above (near dashboard code)
 
 
 def discovery_announce():
@@ -2002,6 +2329,8 @@ def speak(text: str):
     state.tts_paused = False
     state.tts_resume_event.set()  # ensure not stuck in paused state
     duck_other_audio()
+    dashboard_event("tts_start", text[:80])
+    fire_plugin_hook("on_tts", text)
     print(f"{Fore.CYAN}🔊 {HOST_NAME}:{Style.RESET_ALL} {text}")
     try:
         if HAS_EDGE_TTS:
@@ -2024,6 +2353,7 @@ def speak(text: str):
     finally:
         unduck_other_audio()
         state.is_speaking = False
+        dashboard_event("tts_end", text[:80])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2152,6 +2482,8 @@ def voice_loop():
                             )
                             continue
                     play_beep(freq=880, duration=0.12)
+                    dashboard_event("wake", "OWW")
+                    fire_plugin_hook("on_wake")
                     print(
                         f"\n{Fore.GREEN}✨ Wake word detected! (OWW){Style.RESET_ALL}"
                     )
@@ -2197,6 +2529,8 @@ def voice_loop():
 
                         # Confirmation beep
                         play_beep(freq=880, duration=0.12)
+                        dashboard_event("wake", "Whisper")
+                        fire_plugin_hook("on_wake")
                         print(f"\n{Fore.GREEN}✨ Wake word detected!{Style.RESET_ALL}")
                         remainder = strip_wake_word(text)
 
@@ -2218,6 +2552,12 @@ def voice_loop():
 
                             # Local automation commands (skip gateway round-trip)
                             if _handle_local_command(remainder):
+                                wake_buffer.clear()
+                                wake_block_counter = 0
+                                continue
+
+                            # Plugin command handlers
+                            if fire_plugin_hook("on_command", remainder):
                                 wake_buffer.clear()
                                 wake_block_counter = 0
                                 continue
@@ -2306,6 +2646,15 @@ def voice_loop():
 
                                 # Local automation commands (skip gateway round-trip)
                                 if _handle_local_command(text):
+                                    state.conversation_mode = True
+                                    state.last_response_time = time.time()
+                                    mode = "wake"
+                                    recording.clear()
+                                    silent_blocks = 0
+                                    continue
+
+                                # Plugin command handlers
+                                if fire_plugin_hook("on_command", text):
                                     state.conversation_mode = True
                                     state.last_response_time = time.time()
                                     mode = "wake"
@@ -2541,6 +2890,11 @@ def _build_tray_menu():
         else:
             log.warning(f"Settings UI not found: {ui_path}")
 
+    def on_dashboard(icon, item):
+        """Open the live dashboard in the default browser."""
+        import webbrowser
+        webbrowser.open(f"http://localhost:{PEER_PORT}/dashboard")
+
     menu = pystray.Menu(
         pystray.MenuItem(f"Klatsch 🐾 · {HOST_NAME}", None, enabled=False),
         pystray.MenuItem(status_label, None, enabled=False),
@@ -2565,8 +2919,29 @@ def _build_tray_menu():
         pystray.MenuItem(mute_label, on_mute),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Einstellungen...", on_settings),
-        pystray.MenuItem("Quit", on_quit),
+        pystray.MenuItem("Dashboard...", on_dashboard),
     )
+
+    # Append plugin tray items (if any)
+    plugin_items = []
+    for label, callback in _plugin_tray_items:
+        def _make_handler(cb):
+            def handler(icon, item):
+                cb()
+            return handler
+        plugin_items.append(pystray.MenuItem(label, _make_handler(callback)))
+
+    if plugin_items:
+        items = list(menu)
+        items.append(pystray.Menu.SEPARATOR)
+        items.extend(plugin_items)
+        items.append(pystray.MenuItem("Quit", on_quit))
+        menu = pystray.Menu(*items)
+    else:
+        items = list(menu)
+        items.append(pystray.MenuItem("Quit", on_quit))
+        menu = pystray.Menu(*items)
+
     return menu
 
 
@@ -2594,6 +2969,168 @@ def create_tray_icon():
     tooltip = f"Klatsch · {HOST_NAME}"
     icon = pystray.Icon("klatsch", img, tooltip, menu)
     return icon
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Global Hotkeys
+# ──────────────────────────────────────────────────────────────────────────────
+def _register_hotkeys():
+    """Register global hotkeys via the keyboard module (Windows)."""
+    if not HAS_KEYBOARD:
+        log.info("Global hotkeys: keyboard module not installed (pip install keyboard)")
+        return
+
+    registered = []
+
+    def _toggle_listening():
+        state.listening_enabled = not state.listening_enabled
+        status = "ON" if state.listening_enabled else "OFF"
+        dashboard_event("hotkey", f"toggle_listen → {status}")
+        log.info(f"Hotkey: listening {status}")
+        show_toast("Klatsch", f"Listening: {status}")
+        if state.tray_icon:
+            _update_tray_icon_color(state.tray_icon)
+            state.tray_icon.menu = _build_tray_menu()
+            state.tray_icon.update_menu()
+
+    def _open_dashboard():
+        import webbrowser
+        webbrowser.open(f"http://localhost:{PEER_PORT}/dashboard")
+        dashboard_event("hotkey", "dashboard")
+
+    def _open_settings():
+        ui_path = Path(__file__).resolve().parent / "klatsch_ui.py"
+        if ui_path.exists():
+            subprocess.Popen(
+                [sys.executable, str(ui_path)],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        dashboard_event("hotkey", "settings")
+
+    def _toggle_mute():
+        global VOLUME
+        if VOLUME > 0:
+            state._pre_mute_volume = VOLUME
+            VOLUME = 0
+            show_toast("Klatsch", "Stumm geschaltet")
+        else:
+            VOLUME = getattr(state, "_pre_mute_volume", 100)
+            show_toast("Klatsch", f"Lautstärke: {VOLUME}%")
+        dashboard_event("hotkey", f"mute → Vol {VOLUME}%")
+
+    hotkeys = [
+        (HOTKEY_TOGGLE_LISTEN, _toggle_listening, "Toggle Listening"),
+        (HOTKEY_MUTE, _toggle_mute, "Toggle Mute"),
+        (HOTKEY_DASHBOARD, _open_dashboard, "Open Dashboard"),
+        (HOTKEY_SETTINGS, _open_settings, "Open Settings"),
+    ]
+
+    for combo, handler, label in hotkeys:
+        if not combo:
+            continue
+        try:
+            kbd_module.add_hotkey(combo, handler, suppress=False)
+            registered.append(f"{combo} → {label}")
+        except Exception as e:
+            log.warning(f"Hotkey '{combo}' failed: {e}")
+
+    if registered:
+        log.info(f"Global hotkeys: {', '.join(registered)}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plugin System
+# ──────────────────────────────────────────────────────────────────────────────
+_PLUGINS_DIR = Path.home() / ".klatsch" / "plugins"
+_plugin_hooks: dict[str, list] = {
+    "on_wake": [],       # called when wake word detected
+    "on_command": [],    # called with transcribed command text, return True to consume
+    "on_tts": [],        # called before TTS with text
+    "on_event": [],      # called on any dashboard event
+}
+_plugin_tray_items: list[tuple[str, callable]] = []  # (label, callback)
+
+
+class PluginAPI:
+    """API object passed to each plugin's register() function."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def on_wake(self, fn):
+        _plugin_hooks["on_wake"].append(fn)
+
+    def on_command(self, fn):
+        """Register a command handler. fn(text) -> True to consume the command."""
+        _plugin_hooks["on_command"].append(fn)
+
+    def on_tts(self, fn):
+        _plugin_hooks["on_tts"].append(fn)
+
+    def on_event(self, fn):
+        _plugin_hooks["on_event"].append(fn)
+
+    def add_tray_item(self, label: str, callback):
+        _plugin_tray_items.append((label, callback))
+
+    def speak(self, text: str):
+        threading.Thread(target=speak, args=(text,), daemon=True).start()
+
+    def toast(self, title: str, message: str):
+        show_toast(title, message)
+
+    def event(self, kind: str, detail: str = ""):
+        dashboard_event(kind, detail)
+
+    @property
+    def host_name(self):
+        return HOST_NAME
+
+    @property
+    def peers(self):
+        return list(PEERS)
+
+
+def _load_plugins():
+    """Discover and load plugins from ~/.klatsch/plugins/."""
+    if not _PLUGINS_DIR.exists():
+        _PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+        log.info(f"Plugin dir created: {_PLUGINS_DIR}")
+        return
+
+    loaded = []
+    for plugin_file in sorted(_PLUGINS_DIR.glob("*.py")):
+        if plugin_file.name.startswith("_"):
+            continue
+        name = plugin_file.stem
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(f"klatsch_plugin_{name}", plugin_file)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "register"):
+                api = PluginAPI(name)
+                mod.register(api)
+                loaded.append(name)
+            else:
+                log.warning(f"Plugin {name}: no register() function")
+        except Exception as e:
+            log.error(f"Plugin {name} failed to load: {e}")
+
+    if loaded:
+        log.info(f"Plugins loaded: {', '.join(loaded)}")
+
+
+def fire_plugin_hook(hook: str, *args, **kwargs):
+    """Call all registered plugin hooks. For on_command, return True if any handler consumed."""
+    for fn in _plugin_hooks.get(hook, []):
+        try:
+            result = fn(*args, **kwargs)
+            if hook == "on_command" and result is True:
+                return True
+        except Exception as e:
+            log.error(f"Plugin hook {hook} error: {e}")
+    return False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2681,6 +3218,12 @@ def main():
 
     # Start peer coordination server for Follow-Me (also needed for intercom + notifications)
     start_peer_server()
+
+    # Start Dashboard WebSocket server
+    if HAS_WEBSOCKETS:
+        threading.Thread(target=_run_dashboard_server, daemon=True).start()
+        log.info(f"Dashboard: http://localhost:{PEER_PORT}/dashboard (WS :{DASHBOARD_PORT})")
+
     resolve_peers()
     if PEERS:
         log.info(f"Follow-Me peers: {PEERS}")
@@ -2705,7 +3248,7 @@ def main():
     elif not HAS_PYCAW and DUCKING_ENABLED:
         log.info("Audio ducking: pycaw not available (pip install pycaw comtypes)")
 
-    banner = f"Klatsch 🐾  ·  {HOST_NAME}"
+    banner = f"Klatsch 🐾  ·  {HOST_NAME}  ·  v{KLATSCH_VERSION}"
     pad = len(banner) + 4
     top = '\u256d' + '\u2500' * pad + '\u256e'
     bot = '\u2570' + '\u2500' * pad + '\u256f'
@@ -2772,6 +3315,12 @@ def main():
     threading.Thread(target=disk_watcher, daemon=True).start()
     threading.Thread(target=reminder_watcher, daemon=True).start()
     threading.Thread(target=morning_briefing, daemon=True).start()
+
+    # Register global hotkeys
+    _register_hotkeys()
+
+    # Load plugins
+    _load_plugins()
 
     if tray_mode and HAS_TRAY:
         icon = create_tray_icon()

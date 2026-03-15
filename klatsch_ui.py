@@ -82,6 +82,9 @@ STRINGS = {
         "very_low": "Sehr niedrig (0.040)",
         "select_files": "Dateien auswählen",
         "sending": "Sende...",
+        "preview_voice": "▶ Vorschau",
+        "preview_text": "Hallo, ich bin Klatsch, dein Sprachassistent.",
+        "previewing": "Spielt ab...",
     },
     "en": {
         "title": "Klatsch 🐾 Settings",
@@ -141,6 +144,9 @@ STRINGS = {
         "very_low": "Very low (0.040)",
         "select_files": "Select Files",
         "sending": "Sending...",
+        "preview_voice": "▶ Preview",
+        "preview_text": "Hello, I am Klatsch, your voice assistant.",
+        "previewing": "Playing...",
     },
 }
 
@@ -479,6 +485,13 @@ class KlatschSettings:
         voice_combo.grid(row=0, column=1, sticky="ew", padx=4, pady=3)
         self.vars["tts_voice"] = voice_var
 
+        # Preview button
+        preview_btn = ttk.Button(
+            frame, text=self.s["preview_voice"], width=12,
+            command=lambda: self._preview_tts(voice_var, preview_btn),
+        )
+        preview_btn.grid(row=0, column=2, padx=(4, 0), pady=3)
+
         self._add_entry(frame, self.s["wake_words"], "wake_words", 1)
 
         whisper_models = ["tiny", "base", "small", "medium", "large-v3"]
@@ -601,6 +614,58 @@ class KlatschSettings:
         ).pack()
 
     # ── Actions ───────────────────────────────────────────────
+    def _preview_tts(self, voice_var, btn):
+        """Play a short TTS preview of the selected voice via edge-tts."""
+        voice = voice_var.get()
+        text = self.s["preview_text"]
+        original_text = btn.cget("text")
+        btn.config(text=self.s["previewing"], state="disabled")
+        self.root.update_idletasks()
+
+        def _do_preview():
+            try:
+                import asyncio
+                import tempfile
+                import shutil, subprocess as sp
+
+                async def _gen():
+                    import edge_tts
+                    comm = edge_tts.Communicate(text, voice)
+                    chunks = []
+                    async for chunk in comm.stream():
+                        if chunk["type"] == "audio":
+                            chunks.append(chunk["data"])
+                    return b"".join(chunks)
+
+                audio = asyncio.run(_gen())
+                if not audio:
+                    return
+
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    f.write(audio)
+                    tmp = f.name
+
+                # Play via ffplay (silent) or fallback to system player
+                ffplay = shutil.which("ffplay")
+                if ffplay:
+                    sp.run([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", tmp],
+                           timeout=15, creationflags=getattr(sp, "CREATE_NO_WINDOW", 0))
+                else:
+                    # Fallback: os.startfile on Windows
+                    if sys.platform == "win32":
+                        os.startfile(tmp)
+                        import time; time.sleep(5)
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("TTS Preview", str(e)))
+            finally:
+                self.root.after(0, lambda: btn.config(text=original_text, state="normal"))
+
+        threading.Thread(target=_do_preview, daemon=True).start()
+
     def _collect_config(self) -> dict:
         """Collect current widget values into a config dict."""
         cfg = {}
