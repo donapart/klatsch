@@ -2427,9 +2427,11 @@ def main():
 
     banner = f"Klatsch 🐾  ·  {HOST_NAME}"
     pad = len(banner) + 4
-    print(f"{Fore.GREEN}{'\u256d' + '\u2500' * pad + '\u256e'}{Style.RESET_ALL}")
+    top = '\u256d' + '\u2500' * pad + '\u256e'
+    bot = '\u2570' + '\u2500' * pad + '\u256f'
+    print(f"{Fore.GREEN}{top}{Style.RESET_ALL}")
     print(f"{Fore.GREEN}\u2502  {banner}  \u2502{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}{'\u2570' + '\u2500' * pad + '\u256f'}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}{bot}{Style.RESET_ALL}")
 
     # Load Whisper
     if not HAS_WHISPER:
