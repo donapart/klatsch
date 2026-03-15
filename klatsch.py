@@ -24,7 +24,7 @@ Configuration via env vars:
   GATEWAY_URL       - Gateway base URL (default: http://192.168.0.67:18789)
   GATEWAY_TOKEN     - Auth token (default: opensesame)
   AGENT_ID          - Agent ID to talk to (default: main)
-  WAKE_WORDS        - Comma-separated wake words (default: hey nemesis,nemesis)
+  WAKE_WORDS        - Comma-separated wake words (default: hey klatsch,klatsch)
   TTS_VOICE         - edge-tts voice name (default: de-DE-ConradNeural)
   WHISPER_MODEL     - faster-whisper model size (default: base)
   MIC_THRESHOLD     - Voice activity threshold 0.0-1.0 (default: 0.015)
@@ -63,12 +63,14 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 try:
     from faster_whisper import WhisperModel
+
     HAS_WHISPER = True
 except ImportError:
     HAS_WHISPER = False
 
 try:
     import edge_tts
+
     HAS_EDGE_TTS = True
 except ImportError:
     HAS_EDGE_TTS = False
@@ -76,6 +78,7 @@ except ImportError:
 try:
     import openwakeword
     from openwakeword.model import Model as OWWModel
+
     HAS_OWW = True
 except ImportError:
     HAS_OWW = False
@@ -83,18 +86,21 @@ except ImportError:
 try:
     import pystray
     from PIL import Image, ImageDraw, ImageGrab
+
     HAS_TRAY = True
 except ImportError:
     HAS_TRAY = False
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
 
 try:
     import pyperclip
+
     HAS_CLIPBOARD = True
 except ImportError:
     HAS_CLIPBOARD = False
@@ -105,7 +111,11 @@ except ImportError:
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://192.168.0.67:18789")
 GATEWAY_TOKEN = os.getenv("GATEWAY_TOKEN", "opensesame")
 AGENT_ID = os.getenv("AGENT_ID", "main")
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "hey nemesis,nemesis").split(",") if w.strip()]
+WAKE_WORDS = [
+    w.strip().lower()
+    for w in os.getenv("WAKE_WORDS", "hey klatsch,klatsch").split(",")
+    if w.strip()
+]
 TTS_VOICE = os.getenv("TTS_VOICE", "de-DE-ConradNeural")
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
 MIC_THRESHOLD = float(os.getenv("MIC_THRESHOLD", "0.015"))
@@ -119,22 +129,37 @@ INPUT_DEVICE = os.getenv("INPUT_DEVICE")
 OUTPUT_DEVICE = os.getenv("OUTPUT_DEVICE")
 VOLUME = int(os.getenv("VOLUME", "100"))
 import platform
+
 HOST_NAME = os.getenv("HOST_NAME", platform.node().upper() or "UNKNOWN")
 
 # Peer coordination for Follow-Me output routing
 PEER_PORT = int(os.getenv("PEER_PORT", "7790"))
 PEERS = [p.strip() for p in os.getenv("PEERS", "").split(",") if p.strip()]
-SPEAKER_SCORE = float(os.getenv("SPEAKER_SCORE", "1.0"))  # 0.0=no speaker, 1.0=great speaker
-CONVERSATION_TIMEOUT = float(os.getenv("CONVERSATION_TIMEOUT", "8"))  # multi-turn window
+SPEAKER_SCORE = float(
+    os.getenv("SPEAKER_SCORE", "1.0")
+)  # 0.0=no speaker, 1.0=great speaker
+CONVERSATION_TIMEOUT = float(
+    os.getenv("CONVERSATION_TIMEOUT", "8")
+)  # multi-turn window
 
 # Interrupt keywords that cancel TTS playback
-INTERRUPT_WORDS = {"stopp", "stop", "halt", "danke", "genug", "ruhe", "still", "okay danke"}
+INTERRUPT_WORDS = {
+    "stopp",
+    "stop",
+    "halt",
+    "danke",
+    "genug",
+    "ruhe",
+    "still",
+    "okay danke",
+}
 # Pause/resume: "pause" pauses TTS, "weiter" resumes
 PAUSE_WORDS = {"pause"}
 RESUME_WORDS = {"weiter", "weitermachen", "fortfahren"}
 
 # Intercom patterns: "sag dem <peer>: <message>" or "sage <peer>: <message>"
 import re
+
 INTERCOM_PATTERN = re.compile(
     r"^(?:sag|sage|tell)\s+(?:dem|der|the)?\s*([\w-]+)[:\s,]+(.+)$",
     re.IGNORECASE,
@@ -143,7 +168,9 @@ INTERCOM_PATTERN = re.compile(
 PEER_NAME_MAP: dict[str, str] = {}
 
 colorama_init()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 log = logging.getLogger("klatsch")
 
 
@@ -161,17 +188,25 @@ def list_audio_devices():
         if d["max_input_channels"] > 0:
             marker = " <-- DEFAULT" if i == default_in else ""
             sr = int(d["default_samplerate"])
-            print(f"  [{i:2d}] {d['name']:<50} (ch: {d['max_input_channels']}, {sr} Hz){Fore.YELLOW}{marker}{Style.RESET_ALL}")
+            print(
+                f"  [{i:2d}] {d['name']:<50} (ch: {d['max_input_channels']}, {sr} Hz){Fore.YELLOW}{marker}{Style.RESET_ALL}"
+            )
 
     print(f"\n{Fore.GREEN}=== Audio Output Devices (Speakers) ==={Style.RESET_ALL}")
     for i, d in enumerate(devices):
         if d["max_output_channels"] > 0:
             marker = " <-- DEFAULT" if i == default_out else ""
             sr = int(d["default_samplerate"])
-            print(f"  [{i:2d}] {d['name']:<50} (ch: {d['max_output_channels']}, {sr} Hz){Fore.YELLOW}{marker}{Style.RESET_ALL}")
+            print(
+                f"  [{i:2d}] {d['name']:<50} (ch: {d['max_output_channels']}, {sr} Hz){Fore.YELLOW}{marker}{Style.RESET_ALL}"
+            )
 
-    print(f"\n{Fore.CYAN}Use --input-device <ID> and --output-device <ID> to select.{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}Or set INPUT_DEVICE / OUTPUT_DEVICE env vars.{Style.RESET_ALL}\n")
+    print(
+        f"\n{Fore.CYAN}Use --input-device <ID> and --output-device <ID> to select.{Style.RESET_ALL}"
+    )
+    print(
+        f"{Fore.CYAN}Or set INPUT_DEVICE / OUTPUT_DEVICE env vars.{Style.RESET_ALL}\n"
+    )
 
 
 def test_microphone(device_index=None, duration=5):
@@ -199,7 +234,9 @@ def test_microphone(device_index=None, duration=5):
         bar = "█" * bar_len + "░" * (40 - bar_len)
         level_db = 20 * np.log10(max(amp, 1e-10))
         color = Fore.GREEN if amp < 0.03 else (Fore.YELLOW if amp < 0.08 else Fore.RED)
-        sys.stdout.write(f"\r  {color}|{bar}| {level_db:+5.1f} dB  peak: {amp:.4f}{Style.RESET_ALL}")
+        sys.stdout.write(
+            f"\r  {color}|{bar}| {level_db:+5.1f} dB  peak: {amp:.4f}{Style.RESET_ALL}"
+        )
         sys.stdout.flush()
 
     try:
@@ -225,15 +262,23 @@ def test_microphone(device_index=None, duration=5):
     max_peak = max(peak_levels) if peak_levels else 0
     avg_peak = np.mean(peak_levels) if peak_levels else 0
 
-    print(f"  Peak level:    {max_peak:.4f}  ({20 * np.log10(max(max_peak, 1e-10)):+.1f} dB)")
-    print(f"  Average level: {avg_peak:.4f}  ({20 * np.log10(max(avg_peak, 1e-10)):+.1f} dB)")
+    print(
+        f"  Peak level:    {max_peak:.4f}  ({20 * np.log10(max(max_peak, 1e-10)):+.1f} dB)"
+    )
+    print(
+        f"  Average level: {avg_peak:.4f}  ({20 * np.log10(max(avg_peak, 1e-10)):+.1f} dB)"
+    )
     print(f"  Current MIC_THRESHOLD: {MIC_THRESHOLD}")
     if max_peak < MIC_THRESHOLD:
-        print(f"  {Fore.RED}⚠ Your mic level is below the threshold — lower MIC_THRESHOLD or speak louder.{Style.RESET_ALL}")
+        print(
+            f"  {Fore.RED}⚠ Your mic level is below the threshold — lower MIC_THRESHOLD or speak louder.{Style.RESET_ALL}"
+        )
     elif avg_peak > MIC_THRESHOLD * 3:
         print(f"  {Fore.GREEN}✓ Mic levels look good.{Style.RESET_ALL}")
     else:
-        print(f"  {Fore.YELLOW}~ Mic levels are borderline — adjust MIC_THRESHOLD if needed.{Style.RESET_ALL}")
+        print(
+            f"  {Fore.YELLOW}~ Mic levels are borderline — adjust MIC_THRESHOLD if needed.{Style.RESET_ALL}"
+        )
 
     # Playback
     out_dev = int(OUTPUT_DEVICE) if OUTPUT_DEVICE else None
@@ -260,7 +305,9 @@ def detect_output_device(input_device=None, verbose=True):
     in_name = sd.query_devices(in_dev)["name"]
 
     devices = sd.query_devices()
-    outputs = [(i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0]
+    outputs = [
+        (i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0
+    ]
 
     # Generate test tone
     t = np.linspace(0, TONE_DURATION, int(SAMPLE_RATE * TONE_DURATION), endpoint=False)
@@ -291,7 +338,11 @@ def detect_output_device(input_device=None, verbose=True):
             db = 20 * np.log10(max(peak, 1e-10))
             results.append((idx, name, peak, avg, db))
             if verbose:
-                marker = f" {Fore.GREEN}<-- SOUND DETECTED!{Style.RESET_ALL}" if peak > DETECT_THRESHOLD else ""
+                marker = (
+                    f" {Fore.GREEN}<-- SOUND DETECTED!{Style.RESET_ALL}"
+                    if peak > DETECT_THRESHOLD
+                    else ""
+                )
                 print(f"peak={peak:.4f} ({db:.1f} dB) avg={avg:.4f}{marker}")
             time.sleep(0.2)
         except Exception as e:
@@ -309,10 +360,16 @@ def detect_output_device(input_device=None, verbose=True):
             for i, n, p, a, d in detected:
                 print(f"    [{i:2d}] {n[:50]:50s}  peak={p:.4f} ({d:.1f} dB)")
             best = detected[0]
-            print(f"\n  {Fore.GREEN}Best output: [{best[0]}] {best[1]}{Style.RESET_ALL}")
+            print(
+                f"\n  {Fore.GREEN}Best output: [{best[0]}] {best[1]}{Style.RESET_ALL}"
+            )
         else:
-            print(f"  {Fore.RED}No sound detected on any output device!{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}Make sure speakers are on and mic is not muted.{Style.RESET_ALL}")
+            print(
+                f"  {Fore.RED}No sound detected on any output device!{Style.RESET_ALL}"
+            )
+            print(
+                f"  {Fore.YELLOW}Make sure speakers are on and mic is not muted.{Style.RESET_ALL}"
+            )
 
     return detected[0][0] if detected else None
 
@@ -327,13 +384,17 @@ def set_volume(vol: int):
 def get_input_devices():
     """Return list of (index, name) for input devices."""
     devices = sd.query_devices()
-    return [(i, d["name"]) for i, d in enumerate(devices) if d["max_input_channels"] > 0]
+    return [
+        (i, d["name"]) for i, d in enumerate(devices) if d["max_input_channels"] > 0
+    ]
 
 
 def get_output_devices():
     """Return list of (index, name) for output devices."""
     devices = sd.query_devices()
-    return [(i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0]
+    return [
+        (i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0
+    ]
 
 
 def switch_input_device(device_index):
@@ -398,7 +459,9 @@ class AssistantState:
         self.last_wake_time = 0.0  # timestamp of last wake word
         self.peer_claims: dict = {}  # host -> (amplitude, timestamp, speaker_score)
         self.follow_me_enabled = len(PEERS) > 0  # auto-enable if peers configured
-        self.best_speaker_peer: str | None = None  # peer URL with best speaker, set after claim
+        self.best_speaker_peer: str | None = (
+            None  # peer URL with best speaker, set after claim
+        )
         # TTS interrupt
         self.tts_interrupt = False  # flag to stop ongoing TTS
         self.tts_paused = False  # flag to pause ongoing TTS
@@ -414,6 +477,7 @@ class AssistantState:
         self.known_disks: set = set()  # partition mountpoints seen last check
         # Reminders
         self.reminders: list = []  # list of (fire_at: float, text: str)
+
 
 state = AssistantState()
 
@@ -435,12 +499,16 @@ class PeerHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({
-                "host": HOST_NAME,
-                "app": "klatsch",
-                "listening": state.listening_enabled,
-                "presence": state.presence_active,
-            }).encode())
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "host": HOST_NAME,
+                        "app": "klatsch",
+                        "listening": state.listening_enabled,
+                        "presence": state.presence_active,
+                    }
+                ).encode()
+            )
         elif self.path == "/inventory":
             data = scan_local_inventory()
             self.send_response(200)
@@ -473,6 +541,7 @@ class PeerHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
         elif self.path.startswith("/find-file"):
             from urllib.parse import urlparse, parse_qs
+
             q = parse_qs(urlparse(self.path).query).get("q", [""])[0]
             data = find_files(q)
             self.send_response(200)
@@ -492,8 +561,12 @@ class PeerHandler(BaseHTTPRequestHandler):
             peer_amp = float(body.get("amplitude", 0))
             peer_ts = float(body.get("timestamp", 0))
             state.peer_claims[peer_host] = (peer_amp, peer_ts)
-            resp = {"host": HOST_NAME, "amplitude": state.last_wake_amplitude,
-                    "timestamp": state.last_wake_time, "speaker_score": SPEAKER_SCORE}
+            resp = {
+                "host": HOST_NAME,
+                "amplitude": state.last_wake_amplitude,
+                "timestamp": state.last_wake_time,
+                "speaker_score": SPEAKER_SCORE,
+            }
             self._json(200, resp)
         elif self.path == "/speak":
             text = body.get("text", "")
@@ -505,14 +578,18 @@ class PeerHandler(BaseHTTPRequestHandler):
             source = body.get("from", body.get("source", "System"))
             if text:
                 notification = f"{source} sagt: {text}" if source != "System" else text
-                threading.Thread(target=speak, args=(notification,), daemon=True).start()
+                threading.Thread(
+                    target=speak, args=(notification,), daemon=True
+                ).start()
             self._json(200, {"ok": True, "host": HOST_NAME})
         elif self.path == "/intercom":
             text = body.get("text", "")
             sender = body.get("from", "Jemand")
             if text:
                 announcement = f"Durchsage von {sender}: {text}"
-                threading.Thread(target=speak, args=(announcement,), daemon=True).start()
+                threading.Thread(
+                    target=speak, args=(announcement,), daemon=True
+                ).start()
             self._json(200, {"ok": True, "host": HOST_NAME})
         elif self.path == "/clipboard":
             text = body.get("text", "")
@@ -560,6 +637,7 @@ class PeerHandler(BaseHTTPRequestHandler):
 def take_screenshot() -> dict:
     """Capture the primary screen and return a base64-encoded PNG."""
     import base64, io
+
     result: dict = {"host": HOST_NAME, "image": None, "error": None}
     if not HAS_TRAY:  # PIL already imported via tray
         result["error"] = "Pillow not available"
@@ -586,6 +664,7 @@ def get_clipboard_text() -> str:
     if sys.platform == "win32":
         try:
             import ctypes
+
             ctypes.windll.user32.OpenClipboard(0)  # type: ignore[attr-defined]
             handle = ctypes.windll.user32.GetClipboardData(13)  # CF_UNICODETEXT
             ctypes.windll.user32.CloseClipboard()
@@ -616,12 +695,14 @@ def get_processes() -> dict:
         key=lambda x: x.info.get("cpu_percent") or 0,
         reverse=True,
     )[:20]:
-        procs.append({
-            "pid": p.info["pid"],
-            "name": p.info["name"],
-            "cpu": round(p.info.get("cpu_percent") or 0, 1),
-            "mem": round(p.info.get("memory_percent") or 0, 1),
-        })
+        procs.append(
+            {
+                "pid": p.info["pid"],
+                "name": p.info["name"],
+                "cpu": round(p.info.get("cpu_percent") or 0, 1),
+                "mem": round(p.info.get("memory_percent") or 0, 1),
+            }
+        )
     return {"host": HOST_NAME, "processes": procs}
 
 
@@ -639,13 +720,15 @@ def get_syshealth() -> dict:
     for part in psutil.disk_partitions(all=False):
         try:
             usage = psutil.disk_usage(part.mountpoint)
-            data["disks"].append({
-                "mount": part.mountpoint,
-                "total_gb": round(usage.total / 1e9, 1),
-                "used_gb": round(usage.used / 1e9, 1),
-                "free_gb": round(usage.free / 1e9, 1),
-                "percent": usage.percent,
-            })
+            data["disks"].append(
+                {
+                    "mount": part.mountpoint,
+                    "total_gb": round(usage.total / 1e9, 1),
+                    "used_gb": round(usage.used / 1e9, 1),
+                    "free_gb": round(usage.free / 1e9, 1),
+                    "percent": usage.percent,
+                }
+            )
         except PermissionError:
             pass
     try:
@@ -660,11 +743,17 @@ def get_syshealth() -> dict:
 def find_files(query: str, roots: list[str] | None = None) -> dict:
     """Search for files whose name contains *query* (case-insensitive)."""
     import os, fnmatch
+
     if not query:
         return {"host": HOST_NAME, "results": []}
     if roots is None:
-        # Sensible defaults for NEMESIS/ERAZER
-        defaults = [r"D:\Projekte", r"C:\Users", os.path.expanduser("~"), r"D:\OpenClaw"]
+        # Sensible defaults (adjust paths for your system)
+        defaults = [
+            r"D:\Projekte",
+            r"C:\Users",
+            os.path.expanduser("~"),
+            r"D:\OpenClaw",
+        ]
         roots = [r for r in defaults if os.path.isdir(r)]
     results: list[str] = []
     pattern = f"*{query.lower()}*"
@@ -681,8 +770,12 @@ def find_files(query: str, roots: list[str] | None = None) -> dict:
                 if fnmatch.fnmatch(fname.lower(), pattern):
                     results.append(os.path.join(dirpath, fname))
                     if len(results) >= 50:
-                        return {"host": HOST_NAME, "query": query, "results": results,
-                                "truncated": True}
+                        return {
+                            "host": HOST_NAME,
+                            "query": query,
+                            "results": results,
+                            "truncated": True,
+                        }
     return {"host": HOST_NAME, "query": query, "results": results}
 
 
@@ -693,12 +786,19 @@ _APP_MAP: dict[str, list[str]] = {
     "code": ["code"],
     "notepad": ["notepad.exe"],
     "explorer": ["explorer.exe"],
-    "chrome": ["chrome", "google-chrome", r"C:\Program Files\Google\Chrome\Application\chrome.exe"],
+    "chrome": [
+        "chrome",
+        "google-chrome",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    ],
     "firefox": ["firefox"],
     "terminal": ["wt.exe"],  # Windows Terminal
     "powershell": ["powershell.exe"],
     "cmd": ["cmd.exe"],
-    "discord": [r"C:\Users\dano\AppData\Local\Discord\app-latest\Discord.exe", "discord"],
+    "discord": [
+        r"C:\Users\dano\AppData\Local\Discord\app-latest\Discord.exe",
+        "discord",
+    ],
     "spotify": [r"C:\Users\dano\AppData\Roaming\Spotify\Spotify.exe", "spotify"],
     "task manager": ["taskmgr.exe"],
     "rechner": ["calc.exe"],
@@ -709,6 +809,7 @@ _APP_MAP: dict[str, list[str]] = {
 def open_application(name: str) -> bool:
     """Launch an application by name. Returns True if launch was attempted."""
     import subprocess, shutil
+
     name_lower = name.lower().strip()
     # Exact or partial match in app map
     candidates = _APP_MAP.get(name_lower)
@@ -728,18 +829,20 @@ def open_application(name: str) -> bool:
     # Fallback: try to start by name directly
     try:
         import subprocess
+
         subprocess.Popen(name, shell=True)
         return True
     except Exception:
         return False
 
 
-def query_ollama(prompt: str, model: str = "llama3", host: str = "erazer") -> str:
+def query_ollama(prompt: str, model: str = "llama3", host: str = "localhost") -> str:
     """Send a prompt to a local Ollama instance. Returns response text."""
     try:
         url = f"http://{host}:11434/api/generate"
-        resp = requests.post(url, json={"model": model, "prompt": prompt, "stream": False},
-                             timeout=30)
+        resp = requests.post(
+            url, json={"model": model, "prompt": prompt, "stream": False}, timeout=30
+        )
         if resp.ok:
             return resp.json().get("response", "").strip()
     except Exception as exc:
@@ -760,6 +863,7 @@ def presence_watcher():
             mouse = psutil.Process(os.getpid())  # dummy — use win32api on Windows
             if sys.platform == "win32":
                 import ctypes
+
                 pt = ctypes.wintypes.POINT()
                 ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
                 pos = (pt.x, pt.y)
@@ -811,7 +915,9 @@ def reminder_watcher():
             state.reminders = [(ts, txt) for ts, txt in state.reminders if ts > now]
             for _, txt in due:
                 log.info(f"Reminder fired: {txt}")
-                threading.Thread(target=speak, args=(f"Erinnerung: {txt}",), daemon=True).start()
+                threading.Thread(
+                    target=speak, args=(f"Erinnerung: {txt}",), daemon=True
+                ).start()
 
 
 _morning_briefing_done_date: str = ""  # guard: only once per day
@@ -843,9 +949,12 @@ def focus_window(name: str) -> bool:
         return False
     try:
         import ctypes
+
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
         EnumWindows = user32.EnumWindows
-        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+        EnumWindowsProc = ctypes.WINFUNCTYPE(
+            ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)
+        )
 
         name_lower = name.lower()
         found_hwnd = ctypes.c_int(0)
@@ -864,7 +973,7 @@ def focus_window(name: str) -> bool:
         EnumWindows(EnumWindowsProc(_cb), 0)
         if found_hwnd.value:
             hwnd = found_hwnd.value
-            user32.ShowWindow(hwnd, 9)   # SW_RESTORE
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
             user32.SetForegroundWindow(hwnd)
             log.info(f"Focused window: {hwnd}")
             return True
@@ -884,7 +993,9 @@ def broadcast_to_peers(text: str, endpoint: str = "/notify") -> dict:
                 json={"text": text, "from": HOST_NAME, "source": HOST_NAME},
                 timeout=3,
             )
-            results[peer_url] = "ok" if resp.status_code == 200 else f"http {resp.status_code}"
+            results[peer_url] = (
+                "ok" if resp.status_code == 200 else f"http {resp.status_code}"
+            )
         except Exception as exc:
             results[peer_url] = str(exc)
     log.info(f"broadcast_to_peers({endpoint}): {results}")
@@ -911,43 +1022,67 @@ def scan_local_inventory() -> dict:
     try:
         if sys.platform == "win32":
             result = subprocess.run(
-                ["wmic", "logicaldisk", "get",
-                 "DeviceID,VolumeName,Size,FreeSpace,VolumeSerialNumber", "/format:csv"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "wmic",
+                    "logicaldisk",
+                    "get",
+                    "DeviceID,VolumeName,Size,FreeSpace,VolumeSerialNumber",
+                    "/format:csv",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             for line in result.stdout.splitlines():
                 parts = [p.strip() for p in line.split(",")]
                 if len(parts) >= 6 and parts[1] and parts[1] != "DeviceID":
-                    drive_id, free, size, serial, label = parts[1], parts[2], parts[3], parts[4], parts[5]
+                    drive_id, free, size, serial, label = (
+                        parts[1],
+                        parts[2],
+                        parts[3],
+                        parts[4],
+                        parts[5],
+                    )
                     try:
                         size_gb = round(int(size) / 1e9, 1) if size else 0
                         free_gb = round(int(free) / 1e9, 1) if free else 0
                     except ValueError:
                         size_gb, free_gb = 0, 0
-                    host_info["disks"].append({
-                        "id": drive_id, "label": label, "serial": serial,
-                        "size_gb": size_gb, "free_gb": free_gb,
-                    })
+                    host_info["disks"].append(
+                        {
+                            "id": drive_id,
+                            "label": label,
+                            "serial": serial,
+                            "size_gb": size_gb,
+                            "free_gb": free_gb,
+                        }
+                    )
         else:
-            # Linux (Docker / ERAZER via WSL)
+            # Linux (Docker / WSL)
             result = subprocess.run(
                 ["lsblk", "-o", "NAME,LABEL,UUID,SIZE,MOUNTPOINT", "-J"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
+
                 def _walk(devices):
                     for d in devices:
                         if d.get("mountpoint"):
-                            host_info["disks"].append({
-                                "id": d.get("mountpoint"),
-                                "label": d.get("label", ""),
-                                "serial": d.get("uuid", ""),
-                                "name": d.get("name", ""),
-                                "size": d.get("size", ""),
-                            })
+                            host_info["disks"].append(
+                                {
+                                    "id": d.get("mountpoint"),
+                                    "label": d.get("label", ""),
+                                    "serial": d.get("uuid", ""),
+                                    "name": d.get("name", ""),
+                                    "size": d.get("size", ""),
+                                }
+                            )
                         for child in d.get("children", []):
                             _walk([child])
+
                 _walk(data.get("blockdevices", []))
     except Exception as e:
         host_info["disk_error"] = str(e)
@@ -983,19 +1118,27 @@ def scan_local_inventory() -> dict:
                     try:
                         branch = subprocess.run(
                             [git, "-C", str(item), "rev-parse", "--abbrev-ref", "HEAD"],
-                            capture_output=True, text=True, timeout=5,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         ).stdout.strip()
                         status = subprocess.run(
                             [git, "-C", str(item), "status", "--short"],
-                            capture_output=True, text=True, timeout=5,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         ).stdout.strip()
                         last = subprocess.run(
                             [git, "-C", str(item), "log", "-1", "--format=%cr · %s"],
-                            capture_output=True, text=True, timeout=5,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         ).stdout.strip()
                         remote = subprocess.run(
                             [git, "-C", str(item), "remote", "get-url", "origin"],
-                            capture_output=True, text=True, timeout=5,
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         ).stdout.strip()
                         proj["branch"] = branch
                         proj["dirty"] = bool(status)
@@ -1039,8 +1182,12 @@ def broadcast_wake_claim(amplitude: float) -> bool:
         try:
             resp = requests.post(
                 f"{peer_url}/wake-claim",
-                json={"host": HOST_NAME, "amplitude": amplitude, "timestamp": now,
-                      "speaker_score": SPEAKER_SCORE},
+                json={
+                    "host": HOST_NAME,
+                    "amplitude": amplitude,
+                    "timestamp": now,
+                    "speaker_score": SPEAKER_SCORE,
+                },
                 timeout=0.5,
             )
             if resp.status_code == 200:
@@ -1075,7 +1222,9 @@ def broadcast_wake_claim(amplitude: float) -> bool:
     my_amp = amplitude
     for peer_host, (peer_amp, peer_ts, _peer_spk) in state.peer_claims.items():
         if peer_amp > my_amp:
-            log.info(f"Follow-Me: {peer_host} has stronger signal ({peer_amp:.4f} > {my_amp:.4f}), deferring")
+            log.info(
+                f"Follow-Me: {peer_host} has stronger signal ({peer_amp:.4f} > {my_amp:.4f}), deferring"
+            )
             return False
         elif peer_amp == my_amp:
             # Tie-break by hostname (alphabetical)
@@ -1085,8 +1234,11 @@ def broadcast_wake_claim(amplitude: float) -> bool:
 
     log.info(f"Follow-Me: I have the strongest signal ({my_amp:.4f}), I will respond")
     if state.best_speaker_peer:
-        log.info(f"Follow-Me: TTS will be delegated to {state.best_speaker_peer} (speaker_score {best_spk_score:.1f} > {SPEAKER_SCORE:.1f})")
+        log.info(
+            f"Follow-Me: TTS will be delegated to {state.best_speaker_peer} (speaker_score {best_spk_score:.1f} > {SPEAKER_SCORE:.1f})"
+        )
     return True
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Whisper STT
@@ -1096,7 +1248,9 @@ def load_whisper():
         log.error("faster-whisper not installed. Run: pip install faster-whisper")
         return
     log.info(f"Loading Whisper model '{WHISPER_MODEL_SIZE}'...")
-    state.whisper_model = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+    state.whisper_model = WhisperModel(
+        WHISPER_MODEL_SIZE, device="cpu", compute_type="int8"
+    )
     log.info("Whisper model loaded.")
 
 
@@ -1133,7 +1287,9 @@ def load_oww():
     try:
         openwakeword.utils.download_models()
         state.oww_model = OWWModel(
-            wakeword_models=["hey_jarvis_v0.1"],  # closest built-in; works for custom trigger
+            wakeword_models=[
+                "hey_jarvis_v0.1"
+            ],  # closest built-in; works for custom trigger
             inference_framework="onnx",
         )
         log.info("OpenWakeWord model loaded (lightweight wake detection enabled)")
@@ -1174,7 +1330,7 @@ def strip_wake_word(text: str) -> str:
     lower = text.lower().strip()
     for ww in WAKE_WORDS:
         if lower.startswith(ww):
-            remainder = text[len(ww):].strip().lstrip(",").lstrip(".").strip()
+            remainder = text[len(ww) :].strip().lstrip(",").lstrip(".").strip()
             return remainder
     return text
 
@@ -1215,7 +1371,9 @@ def send_intercom(peer_name: str, message: str) -> bool:
     """Send intercom message to a named peer. Returns True on success."""
     url = PEER_NAME_MAP.get(peer_name)
     if not url:
-        log.warning(f"Intercom: unknown peer '{peer_name}', known: {list(PEER_NAME_MAP.keys())}")
+        log.warning(
+            f"Intercom: unknown peer '{peer_name}', known: {list(PEER_NAME_MAP.keys())}"
+        )
         return False
     try:
         resp = requests.post(
@@ -1235,6 +1393,7 @@ def _handle_local_command(text: str) -> bool:
     Returns True if the command was handled (caller should skip send_to_gateway).
     """
     import re
+
     tl = text.lower().strip()
 
     # ── App open: "öffne chrome" / "starte notepad" ──
@@ -1244,13 +1403,19 @@ def _handle_local_command(text: str) -> bool:
         if open_application(app):
             threading.Thread(target=speak, args=(f"Öffne {app}.",), daemon=True).start()
         else:
-            threading.Thread(target=speak, args=(f"Konnte {app} nicht öffnen.",), daemon=True).start()
+            threading.Thread(
+                target=speak, args=(f"Konnte {app} nicht öffnen.",), daemon=True
+            ).start()
         return True
 
     # ── Read clipboard ──
     if any(w in tl for w in ("zwischenablage", "clipboard", "was ist in der ablage")):
         clip = get_clipboard_text()
-        msg = f"In der Zwischenablage steht: {clip}" if clip else "Die Zwischenablage ist leer."
+        msg = (
+            f"In der Zwischenablage steht: {clip}"
+            if clip
+            else "Die Zwischenablage ist leer."
+        )
         threading.Thread(target=speak, args=(msg,), daemon=True).start()
         return True
 
@@ -1278,7 +1443,16 @@ def _handle_local_command(text: str) -> bool:
         return True
 
     # ── System health via voice ──
-    if any(w in tl for w in ("systemstatus", "cpu auslastung", "speicher", "wie viel ram", "festplatte")):
+    if any(
+        w in tl
+        for w in (
+            "systemstatus",
+            "cpu auslastung",
+            "speicher",
+            "wie viel ram",
+            "festplatte",
+        )
+    ):
         health = get_syshealth()
         cpu = health.get("cpu_percent", "?")
         ram = health.get("ram_percent", "?")
@@ -1295,7 +1469,9 @@ def _handle_local_command(text: str) -> bool:
         prompt = m.group(1).strip()
 
         def _ask():
-            threading.Thread(target=speak, args=("Frage Ollama...",), daemon=True).start()
+            threading.Thread(
+                target=speak, args=("Frage Ollama...",), daemon=True
+            ).start()
             answer = query_ollama(prompt)
             if answer:
                 speak(answer)
@@ -1307,28 +1483,38 @@ def _handle_local_command(text: str) -> bool:
 
     # ── Focus window: "fokussiere Discord" / "bringe Chrome nach vorne" ──
     m = re.match(
-        r"(?:fokussiere?|bringe?|zeige?)\s+(.+?)(?:\s+(?:nach\s+vorne|in\s+den\s+vordergrund))?\s*$", tl
+        r"(?:fokussiere?|bringe?|zeige?)\s+(.+?)(?:\s+(?:nach\s+vorne|in\s+den\s+vordergrund))?\s*$",
+        tl,
     )
-    if m and any(w in tl for w in ("fokus", "vorne", "vordergrund", "bringe", "zeige", "fokussiere")):
+    if m and any(
+        w in tl
+        for w in ("fokus", "vorne", "vordergrund", "bringe", "zeige", "fokussiere")
+    ):
         target = m.group(1).strip()
         if focus_window(target):
-            threading.Thread(target=speak, args=(f"{target} ist jetzt vorne.",), daemon=True).start()
+            threading.Thread(
+                target=speak, args=(f"{target} ist jetzt vorne.",), daemon=True
+            ).start()
         else:
-            threading.Thread(target=speak, args=(f"Konnte {target} nicht finden.",), daemon=True).start()
+            threading.Thread(
+                target=speak, args=(f"Konnte {target} nicht finden.",), daemon=True
+            ).start()
         return True
 
     # ── Broadcast to all peers: "sag allen dass …" / "melde überall …" ──
     m = re.match(
-        r"(?:sag|sage|ruf|melde|teile?\s+mit)\s+(?:allen|alle|überall)\s+(?:dass?\s+)?(.+)", tl
+        r"(?:sag|sage|ruf|melde|teile?\s+mit)\s+(?:allen|alle|überall)\s+(?:dass?\s+)?(.+)",
+        tl,
     )
     if m:
         msg = m.group(1).strip()
         threading.Thread(target=speak, args=("Sende an alle...",), daemon=True).start()
-        threading.Thread(target=broadcast_to_peers, args=(msg, "/notify"), daemon=True).start()
+        threading.Thread(
+            target=broadcast_to_peers, args=(msg, "/notify"), daemon=True
+        ).start()
         return True
 
     return False
-
 
 
 def build_peer_name_map():
@@ -1436,9 +1622,24 @@ async def _speak_edge_tts(text: str):
         if ffmpeg:
             # Decode MP3 → raw PCM float32
             result = subprocess.run(
-                [ffmpeg, "-i", tmp_path, "-f", "f32le", "-acodec", "pcm_f32le",
-                 "-ar", "24000", "-ac", "1", "-loglevel", "quiet", "-"],
-                capture_output=True, timeout=30,
+                [
+                    ffmpeg,
+                    "-i",
+                    tmp_path,
+                    "-f",
+                    "f32le",
+                    "-acodec",
+                    "pcm_f32le",
+                    "-ar",
+                    "24000",
+                    "-ac",
+                    "1",
+                    "-loglevel",
+                    "quiet",
+                    "-",
+                ],
+                capture_output=True,
+                timeout=30,
             )
             if result.returncode == 0 and result.stdout:
                 pcm = np.frombuffer(result.stdout, dtype=np.float32)
@@ -1455,13 +1656,15 @@ async def _speak_edge_tts(text: str):
                     # Wait here while paused (blocks until resume)
                     if state.tts_paused:
                         log.info("TTS paused — waiting for 'weiter'")
-                        print(f"{Fore.YELLOW}⏸ TTS pausiert — sag 'weiter' zum Fortfahren{Style.RESET_ALL}")
+                        print(
+                            f"{Fore.YELLOW}⏸ TTS pausiert — sag 'weiter' zum Fortfahren{Style.RESET_ALL}"
+                        )
                         state.tts_resume_event.wait()
                         if state.tts_interrupt:
                             return
                         log.info("TTS resumed")
                         print(f"{Fore.GREEN}▶ TTS fortgesetzt{Style.RESET_ALL}")
-                    chunk = pcm[i:i + chunk_size]
+                    chunk = pcm[i : i + chunk_size]
                     sd.play(chunk, samplerate=24000, device=out_dev, blocking=True)
             else:
                 # Fallback to ffplay
@@ -1469,23 +1672,37 @@ async def _speak_edge_tts(text: str):
                 if ffplay:
                     vol_str = str(VOLUME / 100.0)
                     subprocess.run(
-                        [ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet",
-                         "-volume", vol_str, tmp_path],
-                        check=False, timeout=60,
+                        [
+                            ffplay,
+                            "-nodisp",
+                            "-autoexit",
+                            "-loglevel",
+                            "quiet",
+                            "-volume",
+                            vol_str,
+                            tmp_path,
+                        ],
+                        check=False,
+                        timeout=60,
                     )
         else:
             ffplay = _find_ffplay()
             if ffplay:
                 subprocess.run(
                     [ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_path],
-                    check=False, timeout=60,
+                    check=False,
+                    timeout=60,
                 )
             else:
                 # PowerShell fallback for Windows
                 subprocess.run(
-                    ["powershell", "-c",
-                     f'(New-Object Media.SoundPlayer "{tmp_path}").PlaySync()'],
-                    check=False, timeout=60,
+                    [
+                        "powershell",
+                        "-c",
+                        f'(New-Object Media.SoundPlayer "{tmp_path}").PlaySync()',
+                    ],
+                    check=False,
+                    timeout=60,
                 )
     finally:
         try:
@@ -1497,6 +1714,7 @@ async def _speak_edge_tts(text: str):
 def _find_ffplay() -> str | None:
     """Find ffplay executable."""
     import shutil
+
     return shutil.which("ffplay")
 
 
@@ -1523,7 +1741,9 @@ def speak_or_delegate(text: str):
     # If Follow-Me found a peer with better speakers, delegate
     if state.follow_me_enabled and state.best_speaker_peer:
         if delegate_tts_to_peer(text, state.best_speaker_peer):
-            print(f"{Fore.MAGENTA}📡 TTS delegated to {state.best_speaker_peer}{Style.RESET_ALL}")
+            print(
+                f"{Fore.MAGENTA}📡 TTS delegated to {state.best_speaker_peer}{Style.RESET_ALL}"
+            )
             return
         log.warning("Delegation failed, falling back to local TTS")
     speak(text)
@@ -1544,6 +1764,7 @@ def speak(text: str):
         else:
             # Fallback: pyttsx3
             import pyttsx3
+
             engine = pyttsx3.init()
             engine.setProperty("rate", 170)
             voices = engine.getProperty("voices")
@@ -1613,7 +1834,10 @@ def voice_loop():
             block = state.audio_queue.get(timeout=1.0)
         except queue.Empty:
             # Check multi-turn conversation timeout
-            if state.conversation_mode and time.time() - state.last_response_time > CONVERSATION_TIMEOUT:
+            if (
+                state.conversation_mode
+                and time.time() - state.last_response_time > CONVERSATION_TIMEOUT
+            ):
                 state.conversation_mode = False
                 print(f"{Fore.YELLOW}💬 Conversation ended (timeout){Style.RESET_ALL}")
                 mode = "wake"
@@ -1625,7 +1849,10 @@ def voice_loop():
         if state.is_speaking:
             interrupt_buffer.append(block)
             interrupt_block_counter += 1
-            if interrupt_block_counter >= interrupt_check_blocks and len(interrupt_buffer) >= min_speech_blocks:
+            if (
+                interrupt_block_counter >= interrupt_check_blocks
+                and len(interrupt_buffer) >= min_speech_blocks
+            ):
                 interrupt_block_counter = 0
                 int_audio = np.concatenate(interrupt_buffer, axis=0)
                 interrupt_buffer.clear()
@@ -1650,7 +1877,7 @@ def voice_loop():
                         state.tts_interrupt = True
                         sd.stop()
             if len(interrupt_buffer) > int(2.0 * blocks_per_second):
-                interrupt_buffer = interrupt_buffer[-int(1.0 * blocks_per_second):]
+                interrupt_buffer = interrupt_buffer[-int(1.0 * blocks_per_second) :]
             continue
 
         # Check multi-turn conversation timeout
@@ -1674,10 +1901,14 @@ def voice_loop():
                     if state.follow_me_enabled:
                         i_should_respond = broadcast_wake_claim(wake_amp)
                         if not i_should_respond:
-                            print(f"{Fore.MAGENTA}📡 Follow-Me: another device is closer, staying silent{Style.RESET_ALL}")
+                            print(
+                                f"{Fore.MAGENTA}📡 Follow-Me: another device is closer, staying silent{Style.RESET_ALL}"
+                            )
                             continue
                     play_beep(freq=880, duration=0.12)
-                    print(f"\n{Fore.GREEN}✨ Wake word detected! (OWW){Style.RESET_ALL}")
+                    print(
+                        f"\n{Fore.GREEN}✨ Wake word detected! (OWW){Style.RESET_ALL}"
+                    )
                     mode = "command"
                     recording.clear()
                     silent_blocks = 0
@@ -1695,7 +1926,10 @@ def voice_loop():
                     wake_buffer = wake_buffer[-wake_buffer_max_blocks:]
 
                 # Check for wake word periodically
-                if wake_block_counter >= wake_check_interval and len(wake_buffer) > min_speech_blocks:
+                if (
+                    wake_block_counter >= wake_check_interval
+                    and len(wake_buffer) > min_speech_blocks
+                ):
                     wake_block_counter = 0
                     audio_np = np.concatenate(wake_buffer, axis=0)
                     text = transcribe(audio_np)
@@ -1708,7 +1942,9 @@ def voice_loop():
                         if state.follow_me_enabled:
                             i_should_respond = broadcast_wake_claim(wake_amp)
                             if not i_should_respond:
-                                print(f"{Fore.MAGENTA}📡 Follow-Me: another device is closer, staying silent{Style.RESET_ALL}")
+                                print(
+                                    f"{Fore.MAGENTA}📡 Follow-Me: another device is closer, staying silent{Style.RESET_ALL}"
+                                )
                                 wake_buffer.clear()
                                 wake_block_counter = 0
                                 continue
@@ -1723,7 +1959,9 @@ def voice_loop():
                             intercom = check_intercom_command(remainder)
                             if intercom:
                                 peer_name, message = intercom
-                                print(f"{Fore.MAGENTA}📢 Intercom → {peer_name}: {message}{Style.RESET_ALL}")
+                                print(
+                                    f"{Fore.MAGENTA}📢 Intercom → {peer_name}: {message}{Style.RESET_ALL}"
+                                )
                                 if send_intercom(peer_name, message):
                                     speak(f"Nachricht an {peer_name} gesendet.")
                                 else:
@@ -1757,7 +1995,9 @@ def voice_loop():
                         wake_buffer.clear()
                         wake_block_counter = 0
 
-                        print(f"{Fore.YELLOW}👂 Listening for command...{Style.RESET_ALL}")
+                        print(
+                            f"{Fore.YELLOW}👂 Listening for command...{Style.RESET_ALL}"
+                        )
                         continue
             else:
                 wake_block_counter += 1
@@ -1765,7 +2005,7 @@ def voice_loop():
                     wake_block_counter = 0
                     if wake_buffer:
                         # Discard old silent wake buffer
-                        wake_buffer = wake_buffer[-(wake_buffer_max_blocks // 2):]
+                        wake_buffer = wake_buffer[-(wake_buffer_max_blocks // 2) :]
 
         elif mode == "command":
             # Capture user's command after wake word (or in multi-turn mode)
@@ -1791,7 +2031,9 @@ def voice_loop():
                             if text and len(text.strip()) > 1:
                                 # Check for interrupt word while in command mode
                                 if check_interrupt_word(text):
-                                    print(f"{Fore.YELLOW}👋 '{text}' — zurück zum Lauschen{Style.RESET_ALL}")
+                                    print(
+                                        f"{Fore.YELLOW}👋 '{text}' — zurück zum Lauschen{Style.RESET_ALL}"
+                                    )
                                     state.conversation_mode = False
                                     mode = "wake"
                                     recording.clear()
@@ -1802,7 +2044,9 @@ def voice_loop():
                                 intercom = check_intercom_command(text)
                                 if intercom:
                                     peer_name, message = intercom
-                                    print(f"{Fore.MAGENTA}📢 Intercom → {peer_name}: {message}{Style.RESET_ALL}")
+                                    print(
+                                        f"{Fore.MAGENTA}📢 Intercom → {peer_name}: {message}{Style.RESET_ALL}"
+                                    )
                                     if send_intercom(peer_name, message):
                                         speak(f"Nachricht an {peer_name} gesendet.")
                                     else:
@@ -1842,7 +2086,9 @@ def voice_loop():
                     # No speech detected after wake word for a while → timeout
                     silent_blocks += 1
                     if silent_blocks >= silence_blocks_limit * 2:
-                        print(f"{Fore.RED}(Timeout — kein Befehl erkannt){Style.RESET_ALL}")
+                        print(
+                            f"{Fore.RED}(Timeout — kein Befehl erkannt){Style.RESET_ALL}"
+                        )
                         mode = "wake"
                         recording.clear()
                         silent_blocks = 0
@@ -1880,6 +2126,7 @@ def _build_tray_menu():
             switch_input_device(idx)
             icon.menu = _build_tray_menu()
             icon.update_menu()
+
         return handler
 
     def is_input_checked(idx):
@@ -1890,7 +2137,9 @@ def _build_tray_menu():
     for idx, name in get_input_devices():
         checked_fn = (lambda i: lambda item: is_input_checked(i))(idx)
         input_items.append(
-            pystray.MenuItem(f"[{idx}] {name}", make_input_handler(idx), checked=checked_fn)
+            pystray.MenuItem(
+                f"[{idx}] {name}", make_input_handler(idx), checked=checked_fn
+            )
         )
 
     # ── Output device submenu ─────────────────────────────────
@@ -1899,6 +2148,7 @@ def _build_tray_menu():
             switch_output_device(idx)
             icon.menu = _build_tray_menu()
             icon.update_menu()
+
         return handler
 
     def is_output_checked(idx):
@@ -1909,7 +2159,9 @@ def _build_tray_menu():
     for idx, name in get_output_devices():
         checked_fn = (lambda i: lambda item: is_output_checked(i))(idx)
         output_items.append(
-            pystray.MenuItem(f"[{idx}] {name}", make_output_handler(idx), checked=checked_fn)
+            pystray.MenuItem(
+                f"[{idx}] {name}", make_output_handler(idx), checked=checked_fn
+            )
         )
 
     # ── Mic threshold submenu ─────────────────────────────────
@@ -1920,6 +2172,7 @@ def _build_tray_menu():
             log.info(f"Mic threshold set to {val}")
             icon.menu = _build_tray_menu()
             icon.update_menu()
+
         return handler
 
     threshold_levels = [
@@ -1967,6 +2220,7 @@ def _build_tray_menu():
                 log.info(f"Auto-selected output device [{best}]")
                 icon.menu = _build_tray_menu()
                 icon.update_menu()
+
         threading.Thread(target=_run, daemon=True).start()
 
     # ── Follow-Me toggle ──────────────────────────────────────
@@ -1980,7 +2234,9 @@ def _build_tray_menu():
     def follow_me_label(item):
         peers_info = f" ({len(PEERS)} peers)" if PEERS else " (no peers)"
         spk = f" | Speaker: {SPEAKER_SCORE:.1f}"
-        return f"Follow-Me: {'ON' if state.follow_me_enabled else 'OFF'}{peers_info}{spk}"
+        return (
+            f"Follow-Me: {'ON' if state.follow_me_enabled else 'OFF'}{peers_info}{spk}"
+        )
 
     def is_follow_me_checked(item):
         return state.follow_me_enabled
@@ -1993,6 +2249,7 @@ def _build_tray_menu():
             log.info(f"Speaker score set to {val}")
             icon.menu = _build_tray_menu()
             icon.update_menu()
+
         return handler
 
     speaker_levels = [
@@ -2027,7 +2284,9 @@ def _build_tray_menu():
         pystray.MenuItem(f"Klatsch 🐾 · {HOST_NAME}", None, enabled=False),
         pystray.MenuItem(status_label, None, enabled=False),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem(listening_label, on_toggle_listening, checked=is_listening_checked),
+        pystray.MenuItem(
+            listening_label, on_toggle_listening, checked=is_listening_checked
+        ),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Input Device", pystray.Menu(*input_items)),
         pystray.MenuItem("Output Device", pystray.Menu(*output_items)),
@@ -2035,7 +2294,9 @@ def _build_tray_menu():
         pystray.MenuItem("Test Microphone (5s)", on_mic_test),
         pystray.MenuItem("Detect Best Output (auto)", on_detect_output),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem(follow_me_label, on_toggle_follow_me, checked=is_follow_me_checked),
+        pystray.MenuItem(
+            follow_me_label, on_toggle_follow_me, checked=is_follow_me_checked
+        ),
         pystray.MenuItem("Speaker Quality", pystray.Menu(*speaker_items)),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Volume +10", on_vol_up),
@@ -2079,15 +2340,51 @@ def create_tray_icon():
 def main():
     global INPUT_DEVICE, OUTPUT_DEVICE, VOLUME
 
-    parser = argparse.ArgumentParser(description=f"Klatsch · {HOST_NAME} — OpenClaw Local Agent")
-    parser.add_argument("--tray", action="store_true", help="Run in background with system tray icon")
-    parser.add_argument("--list-devices", action="store_true", help="List all audio input/output devices and exit")
-    parser.add_argument("--test-mic", action="store_true", help="Record 5s from mic, show levels, play back, exit")
-    parser.add_argument("--test-mic-duration", type=int, default=5, help="Duration for mic test in seconds (default: 5)")
-    parser.add_argument("--input-device", type=int, default=None, help="Audio input device index (see --list-devices)")
-    parser.add_argument("--output-device", type=int, default=None, help="Audio output device index (see --list-devices)")
-    parser.add_argument("--volume", type=int, default=None, help="TTS playback volume 0-100 (default: 100)")
-    parser.add_argument("--detect-output", action="store_true", help="Auto-detect best output device by playing tone and listening with mic")
+    parser = argparse.ArgumentParser(
+        description=f"Klatsch · {HOST_NAME} — OpenClaw Local Agent"
+    )
+    parser.add_argument(
+        "--tray", action="store_true", help="Run in background with system tray icon"
+    )
+    parser.add_argument(
+        "--list-devices",
+        action="store_true",
+        help="List all audio input/output devices and exit",
+    )
+    parser.add_argument(
+        "--test-mic",
+        action="store_true",
+        help="Record 5s from mic, show levels, play back, exit",
+    )
+    parser.add_argument(
+        "--test-mic-duration",
+        type=int,
+        default=5,
+        help="Duration for mic test in seconds (default: 5)",
+    )
+    parser.add_argument(
+        "--input-device",
+        type=int,
+        default=None,
+        help="Audio input device index (see --list-devices)",
+    )
+    parser.add_argument(
+        "--output-device",
+        type=int,
+        default=None,
+        help="Audio output device index (see --list-devices)",
+    )
+    parser.add_argument(
+        "--volume",
+        type=int,
+        default=None,
+        help="TTS playback volume 0-100 (default: 100)",
+    )
+    parser.add_argument(
+        "--detect-output",
+        action="store_true",
+        help="Auto-detect best output device by playing tone and listening with mic",
+    )
     args = parser.parse_args()
 
     # Apply CLI overrides
@@ -2144,16 +2441,24 @@ def main():
     if HAS_OWW:
         load_oww()
     else:
-        log.info("OpenWakeWord not installed — using Whisper-based wake detection (heavier on CPU)")
+        log.info(
+            "OpenWakeWord not installed — using Whisper-based wake detection (heavier on CPU)"
+        )
 
     if not HAS_EDGE_TTS:
-        log.warning("edge-tts not installed. Falling back to pyttsx3. Install: pip install edge-tts")
+        log.warning(
+            "edge-tts not installed. Falling back to pyttsx3. Install: pip install edge-tts"
+        )
 
     # Start audio stream
     in_dev = int(INPUT_DEVICE) if INPUT_DEVICE else None
-    in_name = sd.query_devices(in_dev)["name"] if in_dev is not None else "system default"
+    in_name = (
+        sd.query_devices(in_dev)["name"] if in_dev is not None else "system default"
+    )
     out_dev = int(OUTPUT_DEVICE) if OUTPUT_DEVICE else None
-    out_name = sd.query_devices(out_dev)["name"] if out_dev is not None else "system default"
+    out_name = (
+        sd.query_devices(out_dev)["name"] if out_dev is not None else "system default"
+    )
     log.info(f"Input device:  [{in_dev or 'default'}] {in_name}")
     log.info(f"Output device: [{out_dev or 'default'}] {out_name}")
     log.info(f"Volume: {VOLUME}%")

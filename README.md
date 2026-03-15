@@ -57,14 +57,14 @@ All settings are via environment variables (or a `.env` file):
 | `GATEWAY_TOKEN` | `opensesame` | Gateway auth token |
 | `AGENT_ID` | `main` | Agent ID to route voice commands to |
 | `HOST_NAME` | machine hostname | Displayed in tray and logs |
-| `WAKE_WORDS` | `hey nemesis,nemesis` | Comma-separated wake words |
+| `WAKE_WORDS` | `hey klatsch,klatsch` | Comma-separated wake words |
 | `TTS_VOICE` | `de-DE-ConradNeural` | edge-tts voice name |
 | `WHISPER_MODEL` | `base` | faster-whisper model size (`tiny`/`base`/`small`) |
 | `MIC_THRESHOLD` | `0.015` | Voice activity threshold 0.0–1.0 |
 | `INPUT_DEVICE` | system default | Audio input device index |
 | `OUTPUT_DEVICE` | system default | Audio output device index |
 | `VOLUME` | `100` | TTS playback volume 0–100 |
-| `PEERS` | *(empty)* | Space-separated peer URLs, e.g. `http://erazer:7790` |
+| `PEERS` | *(empty)* | Space-separated peer URLs, e.g. `http://other-host:7790` |
 | `SPEAKER_SCORE` | `0.5` | Follow-Me speaker proximity score 0.0–1.0 |
 
 ---
@@ -111,7 +111,7 @@ Each Klatsch instance runs a small HTTP server so peers and external services ca
 ```jsonc
 POST /speak        {"text": "Hello!"}
 POST /notify       {"text": "...", "from": "Bot"}
-POST /intercom     {"text": "...", "from": "NEMESIS"}
+POST /intercom     {"text": "...", "from": "HOST-A"}
 POST /clipboard    {"text": "text to set"}
 POST /open-app     {"app": "chrome"}
 POST /remind       {"text": "Stand-up!", "minutes": 15}
@@ -125,10 +125,10 @@ POST /wake-claim   (internal Follow-Me protocol)
 
 | Say | Action |
 |---|---|
-| *"Hey Nemesis, …"* | Wake + command |
+| *"Hey Klatsch, …"* | Wake + command |
 | *"pause"* | Pause current TTS |
 | *"weiter"* | Resume TTS |
-| *"Nemesis, sag ERAZER: …"* | Intercom to peer |
+| *"Klatsch, sag host-b: …"* | Intercom to peer |
 | *"sag allen dass …"* | Broadcast to all peers |
 | *"öffne Chrome"* | Open application |
 | *"fokussiere Discord"* | Bring window to foreground |
