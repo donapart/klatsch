@@ -139,6 +139,42 @@ POST /wake-claim   (internal Follow-Me protocol)
 
 ---
 
+## Windows Explorer Integration
+
+Right-click any file or use "Send To" to interact with Klatsch directly from Explorer.
+
+### Install
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-context-menu.ps1
+```
+
+This adds three right-click entries and a "Send To" shortcut:
+
+| Menu entry | Action |
+|---|---|
+| **Mit Klatsch vorlesen 🔊** | Read the file aloud via TTS |
+| **An Klatsch senden 🐾** | Ask the AI agent about the file |
+| **Mit Klatsch zusammenfassen 📝** | Get an AI summary |
+| **Send To → Klatsch** | Same as "An Klatsch senden" |
+
+### Uninstall
+
+```powershell
+powershell -File install-context-menu.ps1 -Uninstall
+```
+
+### Command-line usage
+
+```powershell
+python klatsch-send.py speak report.txt       # read aloud
+python klatsch-send.py ask config.yaml         # ask agent
+python klatsch-send.py summarize meeting.md    # summarize
+python klatsch-send.py notes.txt               # default: ask
+```
+
+---
+
 ## Multi-device Follow-Me
 
 Set `PEERS=http://other-host:7790` on every host. When the wake word fires on multiple devices simultaneously, the one closest to the speaker (highest mic amplitude) wins — the others stay silent.

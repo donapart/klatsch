@@ -59,6 +59,12 @@ if ($answer -match "^[Yy]$") {
     Write-Host "Startup shortcut created: $ShortcutPath" -ForegroundColor Green
 }
 
+# 5. Optional: install Explorer context menu entries
+$answer2 = Read-Host "Install Explorer context menu entries (right-click + Send To)? [y/N]"
+if ($answer2 -match "^[Yy]$") {
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $ScriptDir "install-context-menu.ps1")
+}
+
 Write-Host ""
 Write-Host "=== Done! ===" -ForegroundColor Green
 Write-Host "Configure via environment variables (see README.md), then run:"
