@@ -53,6 +53,7 @@ import logging
 import os
 import queue
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -2525,6 +2526,21 @@ def _build_tray_menu():
             out_name = "?"
         return f"In: {in_name} | Out: {out_name}"
 
+    # ── Settings window ──────────────────────────────────────
+    def on_settings(icon, item):
+        """Open the graphical settings window in a separate process."""
+        ui_path = pathlib.Path(__file__).parent / "klatsch_ui.py"
+        if ui_path.exists():
+            threading.Thread(
+                target=lambda: subprocess.Popen(
+                    [sys.executable, str(ui_path)],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                ),
+                daemon=True,
+            ).start()
+        else:
+            log.warning(f"Settings UI not found: {ui_path}")
+
     menu = pystray.Menu(
         pystray.MenuItem(f"Klatsch 🐾 · {HOST_NAME}", None, enabled=False),
         pystray.MenuItem(status_label, None, enabled=False),
@@ -2548,6 +2564,7 @@ def _build_tray_menu():
         pystray.MenuItem("Volume -10", on_vol_down),
         pystray.MenuItem(mute_label, on_mute),
         pystray.Menu.SEPARATOR,
+        pystray.MenuItem("Einstellungen...", on_settings),
         pystray.MenuItem("Quit", on_quit),
     )
     return menu
