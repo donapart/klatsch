@@ -1,0 +1,12 @@
+sounddevice
+numpy
+scipy
+faster-whisper
+requests
+edge-tts
+colorama
+openwakeword
+pystray
+Pillow
+psutil
+pyperclip
