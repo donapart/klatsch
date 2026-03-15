@@ -134,7 +134,13 @@ HOST_NAME = os.getenv("HOST_NAME", platform.node().upper() or "UNKNOWN")
 
 # Peer coordination for Follow-Me output routing
 PEER_PORT = int(os.getenv("PEER_PORT", "7790"))
-PEERS = [p.strip() for p in os.getenv("PEERS", "").split(",") if p.strip()]
+# Smart peer config: comma-separated entries of "lan_ip|tailscale_ip" (or plain URLs)
+# Example: PEERS_CONFIG=192.168.0.172|100.75.39.4,192.168.0.50|100.75.10.10
+# Falls back to legacy PEERS env var (comma-separated URLs) if PEERS_CONFIG not set.
+PEERS_CONFIG_RAW = os.getenv("PEERS_CONFIG", "")
+PEERS: list[str] = []  # populated by resolve_peers() at startup
+_PEERS_STATIC = [p.strip() for p in os.getenv("PEERS", "").split(",") if p.strip()]
+PEER_RESOLVE_INTERVAL = int(os.getenv("PEER_RESOLVE_INTERVAL", "60"))  # seconds
 SPEAKER_SCORE = float(
     os.getenv("SPEAKER_SCORE", "1.0")
 )  # 0.0=no speaker, 1.0=great speaker
@@ -1531,6 +1537,67 @@ def build_peer_name_map():
             log.debug(f"Peer {peer_url} unreachable for name map")
 
 
+def resolve_peers():
+    """Resolve PEERS list from PEERS_CONFIG (LAN first, Tailscale fallback).
+
+    PEERS_CONFIG format: comma-separated entries of "lan_ip|tailscale_ip"
+    For each entry, tries LAN IP first (fast 0.3s socket connect on PEER_PORT).
+    If LAN unreachable, falls back to Tailscale IP.
+    If PEERS_CONFIG is not set, uses legacy PEERS env var directly.
+    """
+    global PEERS
+    if not PEERS_CONFIG_RAW:
+        PEERS[:] = _PEERS_STATIC
+        return
+
+    import socket
+    resolved = []
+    for entry in PEERS_CONFIG_RAW.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if "|" in entry:
+            lan_ip, ts_ip = entry.split("|", 1)
+            lan_ip, ts_ip = lan_ip.strip(), ts_ip.strip()
+            # Try LAN first with fast timeout
+            lan_ok = False
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.3)
+                sock.connect((lan_ip, PEER_PORT))
+                sock.close()
+                lan_ok = True
+            except (OSError, socket.timeout):
+                pass
+            if lan_ok:
+                resolved.append(f"http://{lan_ip}:{PEER_PORT}")
+                log.debug(f"Peer {lan_ip} reachable via LAN")
+            else:
+                resolved.append(f"http://{ts_ip}:{PEER_PORT}")
+                log.debug(f"Peer {lan_ip} unreachable, using Tailscale {ts_ip}")
+        else:
+            # Plain URL or IP — use as-is
+            url = entry if entry.startswith("http") else f"http://{entry}:{PEER_PORT}"
+            resolved.append(url)
+
+    old = list(PEERS)
+    PEERS[:] = resolved
+    if PEERS != old:
+        log.info(f"Peers resolved: {PEERS}")
+        PEER_NAME_MAP.clear()
+        build_peer_name_map()
+
+
+def peer_resolver_loop():
+    """Background thread: re-resolve peers every PEER_RESOLVE_INTERVAL seconds."""
+    while state.running:
+        time.sleep(PEER_RESOLVE_INTERVAL)
+        try:
+            resolve_peers()
+        except Exception as exc:
+            log.debug(f"Peer re-resolve error: {exc}")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Confirmation beep
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2419,11 +2486,16 @@ def main():
 
     # Start peer coordination server for Follow-Me (also needed for intercom + notifications)
     start_peer_server()
+    resolve_peers()
     if PEERS:
         log.info(f"Follow-Me peers: {PEERS}")
         build_peer_name_map()
+        threading.Thread(target=peer_resolver_loop, daemon=True).start()
+    elif PEERS_CONFIG_RAW:
+        log.warning("PEERS_CONFIG set but no peers resolved — will retry in background")
+        threading.Thread(target=peer_resolver_loop, daemon=True).start()
     else:
-        log.info("Follow-Me: no peers configured (set PEERS env var to enable)")
+        log.info("Follow-Me: no peers configured (set PEERS_CONFIG or PEERS env var)")
 
     banner = f"Klatsch 🐾  ·  {HOST_NAME}"
     pad = len(banner) + 4
