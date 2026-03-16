@@ -171,8 +171,12 @@ if not Path(_TOAST_ICON).exists():
 
 
 def show_toast(title: str, message: str) -> None:
-    """Show a Windows toast notification (non-blocking)."""
+    """Show a Windows toast notification (non-blocking). Skipped if disabled in config."""
     if not HAS_WINOTIFY:
+        return
+    # Respect per-session config; TOAST_NOTIFICATIONS may not yet be resolved,
+    # so read it from the already-loaded _SETTINGS dict with a safe fallback.
+    if not _SETTINGS.get("toast_notifications", True):
         return
     try:
         toast = Notification(
@@ -278,6 +282,11 @@ HOTKEY_TOGGLE_LISTEN = _cfg("HOTKEY_TOGGLE_LISTEN", "hotkey_toggle_listen", "ctr
 HOTKEY_MUTE = _cfg("HOTKEY_MUTE", "hotkey_mute", "ctrl+shift+m")
 HOTKEY_DASHBOARD = _cfg("HOTKEY_DASHBOARD", "hotkey_dashboard", "ctrl+shift+d")
 HOTKEY_SETTINGS = _cfg("HOTKEY_SETTINGS", "hotkey_settings", "ctrl+shift+comma")
+
+# UI options
+ALWAYS_ON_TOP = _cfg_bool("ALWAYS_ON_TOP", "always_on_top", True)
+SHOW_DROP_WIDGET = _cfg_bool("SHOW_DROP_WIDGET", "show_drop_widget", False)
+TOAST_NOTIFICATIONS = _cfg_bool("TOAST_NOTIFICATIONS", "toast_notifications", True)
 
 # Tenant isolation: hash of GATEWAY_URL so only same-gateway peers pair up
 import hashlib
@@ -1306,6 +1315,7 @@ def reminder_watcher():
             state.reminders = [(ts, txt) for ts, txt in state.reminders if ts > now]
             for _, txt in due:
                 log.info(f"Reminder fired: {txt}")
+                show_toast("🔔 Erinnerung", txt)
                 threading.Thread(
                     target=speak, args=(f"Erinnerung: {txt}",), daemon=True
                 ).start()
@@ -2048,6 +2058,7 @@ def send_to_gateway(message: str) -> str:
         if choices:
             answer = choices[0].get("message", {}).get("content", "")
             dashboard_event("gateway_reply", answer[:80])
+            show_toast("🤖 Klatsch", answer[:120])
             return answer
         return ""
     except requests.exceptions.ConnectionError:
@@ -3380,6 +3391,19 @@ def main():
 
     # Load plugins
     _load_plugins()
+
+    # Launch floating drop widget if enabled
+    if SHOW_DROP_WIDGET:
+        drop_path = Path(__file__).resolve().parent / "klatsch_drop.py"
+        if drop_path.exists():
+            try:
+                subprocess.Popen(
+                    [sys.executable, str(drop_path)],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                log.info("Drop widget launched")
+            except Exception as e:
+                log.warning(f"Could not launch drop widget: {e}")
 
     if tray_mode and HAS_TRAY:
         icon = create_tray_icon()

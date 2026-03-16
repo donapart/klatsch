@@ -57,6 +57,12 @@ STRINGS = {
         "ducking_enabled_desc": "Andere Apps leiser stellen, wenn Klatsch spricht",
         "ducking_level": "Ducking-Pegel",
         "ducking_level_desc": "Lautstärke anderer Apps bei TTS (0.0 = stumm, 1.0 = voll)",
+        "always_on_top": "Popup immer im Vordergrund",
+        "always_on_top_desc": "Status-Popup bleibt über allen anderen Fenstern",
+        "show_drop_widget": "Schwebendes Drop-Widget anzeigen",
+        "show_drop_widget_desc": "Kleines schwebend-Logo-Fenster für schnellen Zugriff und Datei-Ablage",
+        "toast_notifications": "Toast-Benachrichtigungen",
+        "toast_notifications_desc": "Windows-Benachrichtigungen bei Erinnerungen, Antworten und Ereignissen",
         "peer_port": "HTTP-Port",
         "peer_port_desc": "Port für das lokale HTTP-API und Dashboard",
         "peers_config": "Peers-Konfiguration",
@@ -153,6 +159,12 @@ STRINGS = {
         "ducking_enabled_desc": "Lower other apps' volume while Klatsch speaks",
         "ducking_level": "Ducking Level",
         "ducking_level_desc": "Volume of other apps during TTS (0.0 = mute, 1.0 = full)",
+        "always_on_top": "Popup Always on Top",
+        "always_on_top_desc": "Keep the status popup above all other windows",
+        "show_drop_widget": "Show Floating Drop Widget",
+        "show_drop_widget_desc": "Small floating logo window for quick access and file drops",
+        "toast_notifications": "Toast Notifications",
+        "toast_notifications_desc": "Windows notifications for reminders, replies, and events",
         "peer_port": "HTTP Port",
         "peer_port_desc": "Port for the local HTTP API and dashboard",
         "peers_config": "Peers Configuration",
@@ -252,6 +264,9 @@ DEFAULT_CONFIG = {
     "hotkey_mute": "ctrl+shift+m",
     "hotkey_dashboard": "ctrl+shift+d",
     "hotkey_settings": "ctrl+shift+comma",
+    "always_on_top": True,
+    "show_drop_widget": False,
+    "toast_notifications": True,
 }
 
 
@@ -293,6 +308,9 @@ def load_config() -> dict:
         "HOTKEY_MUTE": "hotkey_mute",
         "HOTKEY_DASHBOARD": "hotkey_dashboard",
         "HOTKEY_SETTINGS": "hotkey_settings",
+        "ALWAYS_ON_TOP": "always_on_top",
+        "SHOW_DROP_WIDGET": "show_drop_widget",
+        "TOAST_NOTIFICATIONS": "toast_notifications",
     }
     for env_key, cfg_key in env_map.items():
         val = os.getenv(env_key)
@@ -470,7 +488,15 @@ class KlatschSettings:
         )
         lang_combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
         self.vars["language"] = lang_var
-        self._add_desc(frame, self.s["language_desc"], r + 1)
+        self._add_desc(frame, self.s["language_desc"], r + 1); r += 2
+
+        # UI options
+        self._add_check(frame, self.s["always_on_top"], "always_on_top", r,
+                         desc=self.s["always_on_top_desc"]); r += 2
+        self._add_check(frame, self.s["show_drop_widget"], "show_drop_widget", r,
+                         desc=self.s["show_drop_widget_desc"]); r += 2
+        self._add_check(frame, self.s["toast_notifications"], "toast_notifications", r,
+                         desc=self.s["toast_notifications_desc"])
 
     def _build_audio_tab(self):
         frame = ttk.Frame(self.notebook, padding=10)

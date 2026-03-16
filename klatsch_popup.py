@@ -112,7 +112,7 @@ _ACCENT = "#7c6ff0"
 # Status Popup Window
 # ──────────────────────────────────────────────────────────────────────────────
 class StatusPopup:
-    def __init__(self, port: int = 7790, lang: str = "de"):
+    def __init__(self, port: int = 7790, lang: str = "de", always_on_top: bool = True):
         self.port = port
         self.s = _I18N.get(lang, _I18N["de"])
         self.base_url = f"http://127.0.0.1:{port}"
@@ -121,7 +121,7 @@ class StatusPopup:
         self.root = tk.Tk()
         self.root.title("Klatsch")
         self.root.overrideredirect(True)  # borderless
-        self.root.attributes("-topmost", True)
+        self.root.attributes("-topmost", always_on_top)
         self.root.configure(bg=_BG)
 
         # Window icon
@@ -137,7 +137,7 @@ class StatusPopup:
         self._height = 460
         self._position_window()
 
-        # Allow dragging
+        # Allow dragging — bound after UI build (attached to header)
         self._drag_x = 0
         self._drag_y = 0
 
@@ -157,6 +157,15 @@ class StatusPopup:
         x = sw - self._width - 12
         y = sh - self._height - 60  # above taskbar
         self.root.geometry(f"{self._width}x{self._height}+{x}+{y}")
+
+    def _drag_start(self, event):
+        self._drag_x = event.x_root - self.root.winfo_x()
+        self._drag_y = event.y_root - self.root.winfo_y()
+
+    def _drag_motion(self, event):
+        x = event.x_root - self._drag_x
+        y = event.y_root - self._drag_y
+        self.root.geometry(f"+{x}+{y}")
 
     def _on_focus_out(self, event):
         # Small delay to avoid closing on internal focus changes
@@ -192,6 +201,12 @@ class StatusPopup:
         )
         close_btn.pack(side="right")
         close_btn.bind("<Button-1>", lambda e: self._close())
+
+        # Drag the whole popup by grabbing the header
+        hdr.bind("<ButtonPress-1>", self._drag_start)
+        hdr.bind("<B1-Motion>", self._drag_motion)
+        self._title_lbl.bind("<ButtonPress-1>", self._drag_start)
+        self._title_lbl.bind("<B1-Motion>", self._drag_motion)
 
         # Status indicator (big)
         self._status_frame = tk.Frame(main, bg=_BG_CARD, padx=12, pady=10)
@@ -424,7 +439,10 @@ def show_popup(port: int | None = None, lang: str | None = None):
     cfg = _load_cfg()
     p = port or int(cfg.get("peer_port", 7790))
     la = lang or cfg.get("language", "de")
-    popup = StatusPopup(port=p, lang=la)
+    aot = cfg.get("always_on_top", True)
+    if isinstance(aot, str):
+        aot = aot not in ("0", "false", "no", "")
+    popup = StatusPopup(port=p, lang=la, always_on_top=bool(aot))
     popup.root.mainloop()
 
 
