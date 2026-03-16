@@ -30,30 +30,64 @@ STRINGS = {
         "tab_audio": "Audio",
         "tab_network": "Netzwerk",
         "tab_voice": "Stimme & Sprache",
+        "tab_hotkeys": "Tastenkürzel",
         "tab_files": "Dateien",
         "tab_about": "Über",
-        "gateway_url": "Gateway URL",
-        "gateway_token": "Gateway Token",
-        "agent_id": "Agent ID",
+        "gateway_url": "Gateway-URL",
+        "gateway_url_desc": "Adresse des OpenClaw-Gateways (z.B. http://192.168.0.67:18789)",
+        "gateway_token": "Gateway-Token",
+        "gateway_token_desc": "Authentifizierungs-Token für den Gateway-Zugang",
+        "agent_id": "Agent-ID",
+        "agent_id_desc": "Name des AI-Agenten auf dem Gateway (Standard: main)",
         "host_name": "Host-Name",
+        "host_name_desc": "Anzeigename dieses Geräts im Netzwerk (leer = Computername)",
         "language": "Sprache",
-        "input_device": "Eingabegerät",
-        "output_device": "Ausgabegerät",
+        "language_desc": "Sprache der Benutzeroberfläche",
+        "input_device": "Eingabegerät (Mikrofon)",
+        "input_device_desc": "Geräte-Index oder leer für Standard-Mikrofon",
+        "output_device": "Ausgabegerät (Lautsprecher)",
+        "output_device_desc": "Geräte-Index oder leer für Standard-Lautsprecher",
         "volume": "Lautstärke",
+        "volume_desc": "TTS-Wiedergabe-Lautstärke (0–100%)",
         "mic_threshold": "Mikrofon-Empfindlichkeit",
+        "mic_threshold_desc": "Wie leise Sprache noch erkannt wird",
         "silence_seconds": "Stille-Erkennung (Sek.)",
-        "ducking_enabled": "Audio-Ducking aktiv",
-        "ducking_level": "Ducking-Pegel (0.0–1.0)",
-        "peer_port": "Peer-Port",
-        "peers_config": "Peers (LAN|Tailscale, kommagetrennt)",
-        "discovery_enabled": "Auto-Discovery aktiv",
+        "silence_seconds_desc": "Sekunden Stille, bevor die Aufnahme endet",
+        "ducking_enabled": "Audio-Ducking aktivieren",
+        "ducking_enabled_desc": "Andere Apps leiser stellen, wenn Klatsch spricht",
+        "ducking_level": "Ducking-Pegel",
+        "ducking_level_desc": "Lautstärke anderer Apps bei TTS (0.0 = stumm, 1.0 = voll)",
+        "peer_port": "HTTP-Port",
+        "peer_port_desc": "Port für das lokale HTTP-API und Dashboard",
+        "peers_config": "Peers-Konfiguration",
+        "peers_config_desc": "LAN|Tailscale-IP pro Gerät, kommagetrennt (z.B. 192.168.0.172|100.75.39.4)",
+        "discovery_enabled": "Auto-Discovery aktivieren",
+        "discovery_enabled_desc": "Andere Klatsch-Instanzen im Netzwerk automatisch finden",
         "discovery_port": "Discovery-Port",
+        "discovery_port_desc": "UDP-Port für die automatische Erkennung",
         "discovery_interval": "Discovery-Intervall (Sek.)",
+        "discovery_interval_desc": "Wie oft ein Heartbeat gesendet wird",
         "speaker_score": "Lautsprecher-Qualität",
+        "speaker_score_desc": "Bewertung der Lautsprecher — steuert Follow-Me-Routing",
+        "dashboard_port": "Dashboard-WebSocket-Port",
+        "dashboard_port_desc": "Port für die Live-Dashboard-Verbindung",
         "tts_voice": "TTS-Stimme",
-        "wake_words": "Aktivierungswörter (kommagetrennt)",
+        "tts_voice_desc": "Microsoft Edge-TTS-Stimme für Sprachausgabe",
+        "wake_words": "Aktivierungswörter",
+        "wake_words_desc": "Kommagetrennte Schlüsselwörter zum Aufwecken (z.B. hey klatsch,klatsch)",
         "whisper_model": "Whisper-Modell",
+        "whisper_model_desc": "Größe des Spracherkennungsmodells — größer = genauer, langsamer",
         "conversation_timeout": "Gesprächs-Timeout (Sek.)",
+        "conversation_timeout_desc": "Sekunden nach letzter Antwort, bis Konversationsmodus endet",
+        "hotkey_toggle_listen": "Mithören An/Aus",
+        "hotkey_toggle_listen_desc": "Tastenkürzel für Mithören umschalten",
+        "hotkey_mute": "Stummschalten",
+        "hotkey_mute_desc": "Tastenkürzel für Lautstärke stumm/laut",
+        "hotkey_dashboard": "Dashboard öffnen",
+        "hotkey_dashboard_desc": "Tastenkürzel für Live-Dashboard im Browser",
+        "hotkey_settings": "Einstellungen öffnen",
+        "hotkey_settings_desc": "Tastenkürzel für dieses Einstellungsfenster",
+        "hotkey_hint": "Format: ctrl+shift+k, alt+f1, etc. Leer = deaktiviert",
         "save": "Speichern",
         "cancel": "Abbrechen",
         "apply_restart": "Übernehmen & Neustart",
@@ -92,30 +126,64 @@ STRINGS = {
         "tab_audio": "Audio",
         "tab_network": "Network",
         "tab_voice": "Voice & Language",
+        "tab_hotkeys": "Hotkeys",
         "tab_files": "Files",
         "tab_about": "About",
         "gateway_url": "Gateway URL",
+        "gateway_url_desc": "Address of the OpenClaw gateway (e.g. http://192.168.0.67:18789)",
         "gateway_token": "Gateway Token",
+        "gateway_token_desc": "Authentication token for gateway access",
         "agent_id": "Agent ID",
+        "agent_id_desc": "Name of the AI agent on the gateway (default: main)",
         "host_name": "Host Name",
+        "host_name_desc": "Display name for this device on the network (empty = computer name)",
         "language": "Language",
-        "input_device": "Input Device",
-        "output_device": "Output Device",
+        "language_desc": "User interface language",
+        "input_device": "Input Device (Microphone)",
+        "input_device_desc": "Device index or empty for default microphone",
+        "output_device": "Output Device (Speaker)",
+        "output_device_desc": "Device index or empty for default speaker",
         "volume": "Volume",
+        "volume_desc": "TTS playback volume (0–100%)",
         "mic_threshold": "Mic Sensitivity",
+        "mic_threshold_desc": "How quiet speech can still be detected",
         "silence_seconds": "Silence Detection (sec)",
-        "ducking_enabled": "Audio Ducking Enabled",
-        "ducking_level": "Ducking Level (0.0–1.0)",
-        "peer_port": "Peer Port",
-        "peers_config": "Peers (LAN|Tailscale, comma-separated)",
-        "discovery_enabled": "Auto-Discovery Enabled",
+        "silence_seconds_desc": "Seconds of silence before recording stops",
+        "ducking_enabled": "Enable Audio Ducking",
+        "ducking_enabled_desc": "Lower other apps' volume while Klatsch speaks",
+        "ducking_level": "Ducking Level",
+        "ducking_level_desc": "Volume of other apps during TTS (0.0 = mute, 1.0 = full)",
+        "peer_port": "HTTP Port",
+        "peer_port_desc": "Port for the local HTTP API and dashboard",
+        "peers_config": "Peers Configuration",
+        "peers_config_desc": "LAN|Tailscale IP per device, comma-separated (e.g. 192.168.0.172|100.75.39.4)",
+        "discovery_enabled": "Enable Auto-Discovery",
+        "discovery_enabled_desc": "Automatically find other Klatsch instances on the network",
         "discovery_port": "Discovery Port",
+        "discovery_port_desc": "UDP port for automatic peer discovery",
         "discovery_interval": "Discovery Interval (sec)",
+        "discovery_interval_desc": "How often a heartbeat is broadcast",
         "speaker_score": "Speaker Quality",
+        "speaker_score_desc": "Speaker quality rating — controls Follow-Me audio routing",
+        "dashboard_port": "Dashboard WebSocket Port",
+        "dashboard_port_desc": "Port for the live dashboard connection",
         "tts_voice": "TTS Voice",
-        "wake_words": "Wake Words (comma-separated)",
+        "tts_voice_desc": "Microsoft Edge TTS voice for speech output",
+        "wake_words": "Wake Words",
+        "wake_words_desc": "Comma-separated keywords to wake Klatsch (e.g. hey klatsch,klatsch)",
         "whisper_model": "Whisper Model",
+        "whisper_model_desc": "Speech recognition model size — larger = more accurate, slower",
         "conversation_timeout": "Conversation Timeout (sec)",
+        "conversation_timeout_desc": "Seconds after last reply before conversation mode ends",
+        "hotkey_toggle_listen": "Toggle Listen",
+        "hotkey_toggle_listen_desc": "Hotkey to toggle listening on/off",
+        "hotkey_mute": "Mute / Unmute",
+        "hotkey_mute_desc": "Hotkey to mute/unmute volume",
+        "hotkey_dashboard": "Open Dashboard",
+        "hotkey_dashboard_desc": "Hotkey to open the live dashboard in browser",
+        "hotkey_settings": "Open Settings",
+        "hotkey_settings_desc": "Hotkey to open this settings window",
+        "hotkey_hint": "Format: ctrl+shift+k, alt+f1, etc. Empty = disabled",
         "save": "Save",
         "cancel": "Cancel",
         "apply_restart": "Apply & Restart",
@@ -179,6 +247,11 @@ DEFAULT_CONFIG = {
     "discovery_interval": 15,
     "speaker_score": 1.0,
     "conversation_timeout": 8,
+    "dashboard_port": 7792,
+    "hotkey_toggle_listen": "ctrl+shift+k",
+    "hotkey_mute": "ctrl+shift+m",
+    "hotkey_dashboard": "ctrl+shift+d",
+    "hotkey_settings": "ctrl+shift+comma",
 }
 
 
@@ -215,6 +288,11 @@ def load_config() -> dict:
         "DISCOVERY_INTERVAL": "discovery_interval",
         "SPEAKER_SCORE": "speaker_score",
         "CONVERSATION_TIMEOUT": "conversation_timeout",
+        "DASHBOARD_PORT": "dashboard_port",
+        "HOTKEY_TOGGLE_LISTEN": "hotkey_toggle_listen",
+        "HOTKEY_MUTE": "hotkey_mute",
+        "HOTKEY_DASHBOARD": "hotkey_dashboard",
+        "HOTKEY_SETTINGS": "hotkey_settings",
     }
     for env_key, cfg_key in env_map.items():
         val = os.getenv(env_key)
@@ -267,9 +345,9 @@ class KlatschSettings:
             self.standalone = False
 
         self.root.title(self.s["title"])
-        self.root.geometry("580x520")
+        self.root.geometry("620x620")
         self.root.resizable(True, True)
-        self.root.minsize(480, 420)
+        self.root.minsize(520, 500)
 
         # Window icon
         icon_path = pathlib.Path(__file__).parent / "klatsch.ico"
@@ -293,6 +371,7 @@ class KlatschSettings:
         self._build_audio_tab()
         self._build_network_tab()
         self._build_voice_tab()
+        self._build_hotkeys_tab()
         self._build_files_tab()
         self._build_about_tab()
 
@@ -319,28 +398,39 @@ class KlatschSettings:
         lang_btn.pack(side="left")
 
     # ── Helpers ───────────────────────────────────────────────
-    def _add_entry(self, parent, label: str, cfg_key: str, row: int, **kw):
+    def _add_desc(self, parent, text: str, row: int):
+        """Add a small gray description label below a field row."""
+        lbl = ttk.Label(parent, text=text, foreground="gray", font=("Segoe UI", 8))
+        lbl.grid(row=row, column=0, columnspan=2, sticky="w", padx=(8, 4), pady=(0, 4))
+
+    def _add_entry(self, parent, label: str, cfg_key: str, row: int, desc: str = "", **kw):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
         var = tk.StringVar(value=str(self.cfg.get(cfg_key, "")))
         entry = ttk.Entry(parent, textvariable=var, **kw)
         entry.grid(row=row, column=1, sticky="ew", padx=4, pady=3)
         self.vars[cfg_key] = var
+        if desc:
+            self._add_desc(parent, desc, row + 1)
         return entry
 
-    def _add_check(self, parent, label: str, cfg_key: str, row: int):
+    def _add_check(self, parent, label: str, cfg_key: str, row: int, desc: str = ""):
         var = tk.BooleanVar(value=bool(self.cfg.get(cfg_key, False)))
         cb = ttk.Checkbutton(parent, text=label, variable=var)
         cb.grid(row=row, column=0, columnspan=2, sticky="w", padx=4, pady=3)
         self.vars[cfg_key] = var
+        if desc:
+            self._add_desc(parent, desc, row + 1)
 
-    def _add_combo(self, parent, label: str, cfg_key: str, values: list, row: int):
+    def _add_combo(self, parent, label: str, cfg_key: str, values: list, row: int, desc: str = ""):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
         var = tk.StringVar(value=str(self.cfg.get(cfg_key, "")))
         combo = ttk.Combobox(parent, textvariable=var, values=values, state="readonly")
         combo.grid(row=row, column=1, sticky="ew", padx=4, pady=3)
         self.vars[cfg_key] = var
+        if desc:
+            self._add_desc(parent, desc, row + 1)
 
-    def _add_scale(self, parent, label: str, cfg_key: str, from_: float, to: float, row: int):
+    def _add_scale(self, parent, label: str, cfg_key: str, from_: float, to: float, row: int, desc: str = ""):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=3)
         frame = ttk.Frame(parent)
         frame.grid(row=row, column=1, sticky="ew", padx=4, pady=3)
@@ -353,6 +443,8 @@ class KlatschSettings:
         scale.pack(side="left", fill="x", expand=True)
         val_label.pack(side="right", padx=(4, 0))
         self.vars[cfg_key] = var
+        if desc:
+            self._add_desc(parent, desc, row + 1)
 
     # ── Tabs ──────────────────────────────────────────────────
     def _build_general_tab(self):
@@ -360,30 +452,36 @@ class KlatschSettings:
         self.notebook.add(frame, text=self.s["tab_general"])
         frame.columnconfigure(1, weight=1)
 
-        self._add_entry(frame, self.s["gateway_url"], "gateway_url", 0)
-        # Show token masked
-        self._add_entry(frame, self.s["gateway_token"], "gateway_token", 1, show="•")
-        self._add_entry(frame, self.s["agent_id"], "agent_id", 2)
-        self._add_entry(frame, self.s["host_name"], "host_name", 3)
+        r = 0
+        self._add_entry(frame, self.s["gateway_url"], "gateway_url", r,
+                         desc=self.s["gateway_url_desc"]); r += 2
+        self._add_entry(frame, self.s["gateway_token"], "gateway_token", r,
+                         desc=self.s["gateway_token_desc"], show="•"); r += 2
+        self._add_entry(frame, self.s["agent_id"], "agent_id", r,
+                         desc=self.s["agent_id_desc"]); r += 2
+        self._add_entry(frame, self.s["host_name"], "host_name", r,
+                         desc=self.s["host_name_desc"]); r += 2
 
         # Language combo
-        ttk.Label(frame, text=self.s["language"]).grid(row=4, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(frame, text=self.s["language"]).grid(row=r, column=0, sticky="w", padx=4, pady=3)
         lang_var = tk.StringVar(value=self.lang)
         lang_combo = ttk.Combobox(
             frame, textvariable=lang_var, values=["de", "en"], state="readonly", width=5
         )
-        lang_combo.grid(row=4, column=1, sticky="w", padx=4, pady=3)
+        lang_combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
         self.vars["language"] = lang_var
+        self._add_desc(frame, self.s["language_desc"], r + 1)
 
     def _build_audio_tab(self):
         frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(frame, text=self.s["tab_audio"])
         frame.columnconfigure(1, weight=1)
 
+        r = 0
         # Volume slider (0-100)
-        ttk.Label(frame, text=self.s["volume"]).grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(frame, text=self.s["volume"]).grid(row=r, column=0, sticky="w", padx=4, pady=3)
         vol_frame = ttk.Frame(frame)
-        vol_frame.grid(row=0, column=1, sticky="ew", padx=4, pady=3)
+        vol_frame.grid(row=r, column=1, sticky="ew", padx=4, pady=3)
         vol_var = tk.IntVar(value=int(self.cfg.get("volume", 100)))
         vol_label = ttk.Label(vol_frame, text=f"{vol_var.get()}%", width=5)
         vol_scale = ttk.Scale(
@@ -393,9 +491,12 @@ class KlatschSettings:
         vol_scale.pack(side="left", fill="x", expand=True)
         vol_label.pack(side="right", padx=(4, 0))
         self.vars["volume"] = vol_var
+        self._add_desc(frame, self.s["volume_desc"], r + 1); r += 2
 
-        self._add_entry(frame, self.s["input_device"], "input_device", 1)
-        self._add_entry(frame, self.s["output_device"], "output_device", 2)
+        self._add_entry(frame, self.s["input_device"], "input_device", r,
+                         desc=self.s["input_device_desc"]); r += 2
+        self._add_entry(frame, self.s["output_device"], "output_device", r,
+                         desc=self.s["output_device_desc"]); r += 2
 
         # Mic threshold combo
         threshold_opts = [
@@ -407,37 +508,48 @@ class KlatschSettings:
         ]
         threshold_vals = [0.005, 0.010, 0.015, 0.025, 0.040]
         current_thresh = float(self.cfg.get("mic_threshold", 0.015))
-        # Find closest match
         closest_label = threshold_opts[2]  # default: normal
         for i, v in enumerate(threshold_vals):
             if abs(current_thresh - v) < 0.002:
                 closest_label = threshold_opts[i]
                 break
-        ttk.Label(frame, text=self.s["mic_threshold"]).grid(row=3, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(frame, text=self.s["mic_threshold"]).grid(row=r, column=0, sticky="w", padx=4, pady=3)
         thresh_var = tk.StringVar(value=closest_label)
         thresh_combo = ttk.Combobox(
             frame, textvariable=thresh_var, values=threshold_opts, state="readonly"
         )
-        thresh_combo.grid(row=3, column=1, sticky="ew", padx=4, pady=3)
+        thresh_combo.grid(row=r, column=1, sticky="ew", padx=4, pady=3)
         self.vars["mic_threshold"] = thresh_var
         self._threshold_map = dict(zip(threshold_opts, threshold_vals))
+        self._add_desc(frame, self.s["mic_threshold_desc"], r + 1); r += 2
 
-        self._add_entry(frame, self.s["silence_seconds"], "silence_seconds", 4)
+        self._add_entry(frame, self.s["silence_seconds"], "silence_seconds", r,
+                         desc=self.s["silence_seconds_desc"]); r += 2
 
         # Ducking
-        self._add_check(frame, self.s["ducking_enabled"], "ducking_enabled", 5)
-        self._add_scale(frame, self.s["ducking_level"], "ducking_level", 0.0, 1.0, 6)
+        self._add_check(frame, self.s["ducking_enabled"], "ducking_enabled", r,
+                         desc=self.s["ducking_enabled_desc"]); r += 2
+        self._add_scale(frame, self.s["ducking_level"], "ducking_level", 0.0, 1.0, r,
+                         desc=self.s["ducking_level_desc"])
 
     def _build_network_tab(self):
         frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(frame, text=self.s["tab_network"])
         frame.columnconfigure(1, weight=1)
 
-        self._add_entry(frame, self.s["peer_port"], "peer_port", 0)
-        self._add_entry(frame, self.s["peers_config"], "peers_config", 1)
-        self._add_check(frame, self.s["discovery_enabled"], "discovery_enabled", 2)
-        self._add_entry(frame, self.s["discovery_port"], "discovery_port", 3)
-        self._add_entry(frame, self.s["discovery_interval"], "discovery_interval", 4)
+        r = 0
+        self._add_entry(frame, self.s["peer_port"], "peer_port", r,
+                         desc=self.s["peer_port_desc"]); r += 2
+        self._add_entry(frame, self.s["dashboard_port"], "dashboard_port", r,
+                         desc=self.s["dashboard_port_desc"]); r += 2
+        self._add_entry(frame, self.s["peers_config"], "peers_config", r,
+                         desc=self.s["peers_config_desc"]); r += 2
+        self._add_check(frame, self.s["discovery_enabled"], "discovery_enabled", r,
+                         desc=self.s["discovery_enabled_desc"]); r += 2
+        self._add_entry(frame, self.s["discovery_port"], "discovery_port", r,
+                         desc=self.s["discovery_port_desc"]); r += 2
+        self._add_entry(frame, self.s["discovery_interval"], "discovery_interval", r,
+                         desc=self.s["discovery_interval_desc"]); r += 2
 
         # Speaker score combo
         score_opts = [
@@ -454,7 +566,8 @@ class KlatschSettings:
             if abs(current_score - v) < 0.05:
                 closest_label = score_opts[i]
                 break
-        self._add_combo(frame, self.s["speaker_score"], "_speaker_score_label", score_opts, 5)
+        self._add_combo(frame, self.s["speaker_score"], "_speaker_score_label", score_opts, r,
+                         desc=self.s["speaker_score_desc"])
         self.vars["_speaker_score_label"].set(closest_label)
         self._score_map = dict(zip(score_opts, score_vals))
 
@@ -463,6 +576,7 @@ class KlatschSettings:
         self.notebook.add(frame, text=self.s["tab_voice"])
         frame.columnconfigure(1, weight=1)
 
+        r = 0
         # TTS voice with presets
         voices = [
             "de-DE-ConradNeural",
@@ -479,10 +593,10 @@ class KlatschSettings:
         current_voice = str(self.cfg.get("tts_voice", "de-DE-ConradNeural"))
         if current_voice not in voices:
             voices.insert(0, current_voice)
-        ttk.Label(frame, text=self.s["tts_voice"]).grid(row=0, column=0, sticky="w", padx=4, pady=3)
+        ttk.Label(frame, text=self.s["tts_voice"]).grid(row=r, column=0, sticky="w", padx=4, pady=3)
         voice_var = tk.StringVar(value=current_voice)
         voice_combo = ttk.Combobox(frame, textvariable=voice_var, values=voices)
-        voice_combo.grid(row=0, column=1, sticky="ew", padx=4, pady=3)
+        voice_combo.grid(row=r, column=1, sticky="ew", padx=4, pady=3)
         self.vars["tts_voice"] = voice_var
 
         # Preview button
@@ -490,13 +604,37 @@ class KlatschSettings:
             frame, text=self.s["preview_voice"], width=12,
             command=lambda: self._preview_tts(voice_var, preview_btn),
         )
-        preview_btn.grid(row=0, column=2, padx=(4, 0), pady=3)
+        preview_btn.grid(row=r, column=2, padx=(4, 0), pady=3)
+        self._add_desc(frame, self.s["tts_voice_desc"], r + 1); r += 2
 
-        self._add_entry(frame, self.s["wake_words"], "wake_words", 1)
+        self._add_entry(frame, self.s["wake_words"], "wake_words", r,
+                         desc=self.s["wake_words_desc"]); r += 2
 
         whisper_models = ["tiny", "base", "small", "medium", "large-v3"]
-        self._add_combo(frame, self.s["whisper_model"], "whisper_model", whisper_models, 2)
-        self._add_entry(frame, self.s["conversation_timeout"], "conversation_timeout", 3)
+        self._add_combo(frame, self.s["whisper_model"], "whisper_model", whisper_models, r,
+                         desc=self.s["whisper_model_desc"]); r += 2
+        self._add_entry(frame, self.s["conversation_timeout"], "conversation_timeout", r,
+                         desc=self.s["conversation_timeout_desc"])
+
+    def _build_hotkeys_tab(self):
+        frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(frame, text=self.s["tab_hotkeys"])
+        frame.columnconfigure(1, weight=1)
+
+        r = 0
+        # Hint label at top
+        ttk.Label(frame, text=self.s["hotkey_hint"], foreground="gray",
+                   font=("Segoe UI", 9)).grid(row=r, column=0, columnspan=2,
+                                                sticky="w", padx=4, pady=(0, 8)); r += 1
+
+        self._add_entry(frame, self.s["hotkey_toggle_listen"], "hotkey_toggle_listen", r,
+                         desc=self.s["hotkey_toggle_listen_desc"]); r += 2
+        self._add_entry(frame, self.s["hotkey_mute"], "hotkey_mute", r,
+                         desc=self.s["hotkey_mute_desc"]); r += 2
+        self._add_entry(frame, self.s["hotkey_dashboard"], "hotkey_dashboard", r,
+                         desc=self.s["hotkey_dashboard_desc"]); r += 2
+        self._add_entry(frame, self.s["hotkey_settings"], "hotkey_settings", r,
+                         desc=self.s["hotkey_settings_desc"])
 
     def _build_files_tab(self):
         """Drag & drop area for sending files to Klatsch."""
@@ -747,9 +885,9 @@ def open_settings(lang: str | None = None, callback=None):
     root.deiconify()
     app.root = root
     app.root.title(app.s["title"])
-    app.root.geometry("580x520")
+    app.root.geometry("620x620")
     app.root.resizable(True, True)
-    app.root.minsize(480, 420)
+    app.root.minsize(520, 500)
 
     icon_path = pathlib.Path(__file__).parent / "klatsch.ico"
     if icon_path.exists():
@@ -769,6 +907,7 @@ def open_settings(lang: str | None = None, callback=None):
     app._build_audio_tab()
     app._build_network_tab()
     app._build_voice_tab()
+    app._build_hotkeys_tab()
     app._build_files_tab()
     app._build_about_tab()
 

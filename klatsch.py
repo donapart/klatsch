@@ -914,6 +914,12 @@ class PeerHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+        elif self.path == "/status":
+            snap = _dashboard_snapshot()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(snap, ensure_ascii=False).encode())
         elif self.path == "/dashboard":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -993,6 +999,16 @@ class PeerHandler(BaseHTTPRequestHandler):
                     target=broadcast_to_peers, args=(text, endpoint), daemon=True
                 ).start()
             self._json(200, {"ok": True, "host": HOST_NAME, "peers": len(PEERS)})
+        elif self.path == "/toggle-listen":
+            state.listening_enabled = not state.listening_enabled
+            status = "ON" if state.listening_enabled else "OFF"
+            log.info(f"API: listening toggled to {status}")
+            dashboard_event("toggle", f"listening → {status}")
+            if state.tray_icon:
+                _update_tray_icon_color(state.tray_icon)
+                state.tray_icon.menu = _build_tray_menu()
+                state.tray_icon.update_menu()
+            self._json(200, {"ok": True, "listening": state.listening_enabled})
         else:
             self.send_response(404)
             self.end_headers()
@@ -2917,7 +2933,13 @@ def _build_tray_menu():
         import webbrowser
         webbrowser.open(f"http://localhost:{PEER_PORT}/dashboard")
 
+    def on_status_popup(icon, item):
+        """Open the status popup (left-click action)."""
+        threading.Thread(target=_open_status_popup, daemon=True).start()
+
     menu = pystray.Menu(
+        # Hidden default item: triggers on left-click (double-click on some systems)
+        pystray.MenuItem("Status", on_status_popup, default=True, visible=False),
         pystray.MenuItem(f"Klatsch 🐾 · {HOST_NAME}", None, enabled=False),
         pystray.MenuItem(status_label, None, enabled=False),
         pystray.Menu.SEPARATOR,
@@ -2981,8 +3003,18 @@ def _update_tray_icon_color(icon):
     icon.icon = _make_tray_image(state.listening_enabled)
 
 
+def _open_status_popup():
+    """Spawn the status popup as a separate process."""
+    popup_path = Path(__file__).resolve().parent / "klatsch_popup.py"
+    if popup_path.exists():
+        subprocess.Popen(
+            [sys.executable, str(popup_path)],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+
 def create_tray_icon():
-    """Create a system tray icon with settings menus."""
+    """Create a system tray icon with settings menus. Left-click opens status popup."""
     if not HAS_TRAY:
         return None
 
