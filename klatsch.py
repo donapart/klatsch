@@ -170,13 +170,22 @@ if not Path(_TOAST_ICON).exists():
     _TOAST_ICON = ""
 
 
-def show_toast(title: str, message: str) -> None:
-    """Show a Windows toast notification (non-blocking). Skipped if disabled in config."""
+def show_toast(title: str, message: str, category: str = "general") -> None:
+    """Show a Windows toast notification (non-blocking). Skipped if disabled in config.
+
+    category: 'general' | 'reminder' | 'reply' | 'peer' | 'error'
+    Each category checks its own settings key before falling back to the master switch.
+    """
     if not HAS_WINOTIFY:
         return
-    # Respect per-session config; TOAST_NOTIFICATIONS may not yet be resolved,
-    # so read it from the already-loaded _SETTINGS dict with a safe fallback.
-    if not _SETTINGS.get("toast_notifications", True):
+    # Per-category overrides; fall back to master switch
+    _cat_key = {
+        "reminder": "toast_reminders",
+        "reply":    "toast_replies",
+        "peer":     "toast_peers",
+        "error":    "toast_errors",
+    }.get(category, "toast_notifications")
+    if not _SETTINGS.get(_cat_key, _SETTINGS.get("toast_notifications", True)):
         return
     try:
         toast = Notification(
@@ -287,6 +296,13 @@ HOTKEY_SETTINGS = _cfg("HOTKEY_SETTINGS", "hotkey_settings", "ctrl+shift+comma")
 ALWAYS_ON_TOP = _cfg_bool("ALWAYS_ON_TOP", "always_on_top", True)
 SHOW_DROP_WIDGET = _cfg_bool("SHOW_DROP_WIDGET", "show_drop_widget", False)
 TOAST_NOTIFICATIONS = _cfg_bool("TOAST_NOTIFICATIONS", "toast_notifications", True)
+# Per-category toast controls (fall back to the master TOAST_NOTIFICATIONS switch)
+TOAST_REMINDERS = _cfg_bool("TOAST_REMINDERS", "toast_reminders", True)
+TOAST_REPLIES   = _cfg_bool("TOAST_REPLIES",   "toast_replies",   True)
+TOAST_PEERS     = _cfg_bool("TOAST_PEERS",     "toast_peers",     True)
+TOAST_ERRORS    = _cfg_bool("TOAST_ERRORS",    "toast_errors",    True)
+HOTKEY_TOGGLE_DROP = _cfg("HOTKEY_TOGGLE_DROP", "hotkey_toggle_drop", "")
+THEME = _cfg("THEME", "theme", "dark")
 
 # Tenant isolation: hash of GATEWAY_URL so only same-gateway peers pair up
 import hashlib
@@ -627,6 +643,11 @@ class AssistantState:
         self.known_disks: set = set()  # partition mountpoints seen last check
         # Reminders
         self.reminders: list = []  # list of (fire_at: float, text: str)
+        # Conversation history: list of {"q", "a", "ts"}; last 10 pairs
+        self.last_reply: str = ""
+        self.conversation_history: list = []
+        # Drop widget subprocess handle (for toggle hotkey)
+        self._drop_widget_proc = None
 
 
 state = AssistantState()
@@ -686,6 +707,8 @@ def _dashboard_snapshot() -> dict:
         "reminders": len(state.reminders),
         "discovery_enabled": DISCOVERY_ENABLED,
         "tenant": TENANT_ID,
+        "history": state.conversation_history[-3:],
+        "last_reply": state.last_reply,
     }
 
 
@@ -929,6 +952,23 @@ class PeerHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(snap, ensure_ascii=False).encode())
+        elif self.path.startswith("/snooze-reminder"):
+            from urllib.parse import urlparse, parse_qs
+            text = parse_qs(urlparse(self.path).query).get("text", ["Erinnerung"])[0]
+            fire_at = time.time() + 5 * 60  # 5 minutes from now
+            state.reminders.append((fire_at, text))
+            dashboard_event("snooze", text[:40])
+            log.info(f"Snooze: reminder re-scheduled in 5 min: {text}")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            _snooze_html = (
+                "<html><head><meta charset=utf-8>"
+                "<script>setTimeout(()=>window.close(),800)</script></head>"
+                "<body style='font-family:sans-serif;padding:24px'>"
+                "\u23f0 Snooze gesetzt \u2014 Erinnerung in 5 Minuten!</body></html>"
+            )
+            self.wfile.write(_snooze_html.encode("utf-8"))
         elif self.path == "/dashboard":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1018,6 +1058,13 @@ class PeerHandler(BaseHTTPRequestHandler):
                 state.tray_icon.menu = _build_tray_menu()
                 state.tray_icon.update_menu()
             self._json(200, {"ok": True, "listening": state.listening_enabled})
+        elif self.path == "/volume":
+            global VOLUME
+            vol = body.get("volume")
+            if vol is not None:
+                VOLUME = max(0, min(100, int(vol)))
+                dashboard_event("volume", f"set to {VOLUME}%")
+            self._json(200, {"ok": True, "volume": VOLUME})
         else:
             self.send_response(404)
             self.end_headers()
@@ -1315,10 +1362,33 @@ def reminder_watcher():
             state.reminders = [(ts, txt) for ts, txt in state.reminders if ts > now]
             for _, txt in due:
                 log.info(f"Reminder fired: {txt}")
-                show_toast("🔔 Erinnerung", txt)
+                _show_reminder_toast(txt)
                 threading.Thread(
                     target=speak, args=(f"Erinnerung: {txt}",), daemon=True
                 ).start()
+
+
+def _show_reminder_toast(txt: str) -> None:
+    """Show a reminder toast. Uses winotify snooze action when available."""
+    if not HAS_WINOTIFY:
+        return
+    if not _SETTINGS.get("toast_reminders", _SETTINGS.get("toast_notifications", True)):
+        return
+    try:
+        from urllib.parse import quote as _urlencode
+        toast = Notification(
+            app_id="Klatsch 🐾",
+            title="🔔 Erinnerung",
+            msg=txt,
+            icon=_TOAST_ICON if _TOAST_ICON else "",
+        )
+        toast.set_audio(audio.Default, loop=False)
+        # Snooze button: opens local endpoint which re-schedules the reminder
+        snooze_url = f"http://localhost:{PEER_PORT}/snooze-reminder?text={_urlencode(txt)}"
+        toast.add_actions(label="Snooze 5 min", launch=snooze_url)
+        toast.show()
+    except Exception:
+        pass  # best-effort
 
 
 _morning_briefing_done_date: str = ""  # guard: only once per day
@@ -2058,7 +2128,18 @@ def send_to_gateway(message: str) -> str:
         if choices:
             answer = choices[0].get("message", {}).get("content", "")
             dashboard_event("gateway_reply", answer[:80])
-            show_toast("🤖 Klatsch", answer[:120])
+            # Store for tray tooltip and conversation history
+            state.last_reply = answer[:60]
+            state.conversation_history.append({
+                "q": message[:80],
+                "a": answer[:200],
+                "ts": time.time(),
+            })
+            if len(state.conversation_history) > 10:
+                state.conversation_history.pop(0)
+            show_toast("🤖 Klatsch", answer[:120], category="reply")
+            if state.tray_icon:
+                state.tray_icon.title = f"Klatsch · {state.last_reply}"
             return answer
         return ""
     except requests.exceptions.ConnectionError:
@@ -2377,6 +2458,8 @@ def speak(text: str):
     state.tts_interrupt = False
     state.tts_paused = False
     state.tts_resume_event.set()  # ensure not stuck in paused state
+    if state.tray_icon:
+        _update_tray_icon_color(state.tray_icon)
     duck_other_audio()
     dashboard_event("tts_start", text[:80])
     fire_plugin_hook("on_tts", text)
@@ -2402,6 +2485,8 @@ def speak(text: str):
     finally:
         unduck_other_audio()
         state.is_speaking = False
+        if state.tray_icon:
+            _update_tray_icon_color(state.tray_icon)
         dashboard_event("tts_end", text[:80])
 
 
@@ -3000,18 +3085,26 @@ def _build_tray_menu():
     return menu
 
 
-def _make_tray_image(listening: bool = True):
-    """Create tray icon image — green when listening, red when paused."""
+def _make_tray_image():
+    """Create tray icon image with 4 states: green=listening, yellow=speaking,
+    red=disabled, dark-red=paused/muted."""
     img = Image.new("RGB", (64, 64), color=(30, 30, 30))
     draw = ImageDraw.Draw(img)
-    color = (0, 180, 80) if listening else (180, 50, 50)
+    if state.is_speaking:
+        color = (200, 160, 0)   # yellow — speaking
+    elif state.tts_paused:
+        color = (120, 20, 20)   # dark red — paused
+    elif state.listening_enabled:
+        color = (0, 180, 80)    # green — listening
+    else:
+        color = (180, 50, 50)   # red — disabled
     draw.ellipse([12, 12, 52, 52], fill=color)
     return img
 
 
 def _update_tray_icon_color(icon):
-    """Update tray icon color based on listening state."""
-    icon.icon = _make_tray_image(state.listening_enabled)
+    """Refresh tray icon dot color to reflect current state."""
+    icon.icon = _make_tray_image()
 
 
 def _open_status_popup():
@@ -3029,7 +3122,7 @@ def create_tray_icon():
     if not HAS_TRAY:
         return None
 
-    img = _make_tray_image(state.listening_enabled)
+    img = _make_tray_image()
     menu = _build_tray_menu()
     tooltip = f"Klatsch · {HOST_NAME}"
     icon = pystray.Icon("klatsch", img, tooltip, menu)
@@ -3083,11 +3176,31 @@ def _register_hotkeys():
             show_toast("Klatsch", f"Lautstärke: {VOLUME}%")
         dashboard_event("hotkey", f"mute → Vol {VOLUME}%")
 
+    def _toggle_drop_widget():
+        """Show or hide the floating drop widget via hotkey."""
+        proc = state._drop_widget_proc
+        if proc and proc.poll() is None:
+            proc.terminate()
+            state._drop_widget_proc = None
+            dashboard_event("hotkey", "drop_widget → hide")
+        else:
+            drop_path = Path(__file__).resolve().parent / "klatsch_drop.py"
+            if drop_path.exists():
+                try:
+                    state._drop_widget_proc = subprocess.Popen(
+                        [sys.executable, str(drop_path)],
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    dashboard_event("hotkey", "drop_widget → show")
+                except Exception as exc:
+                    log.warning(f"Drop widget toggle failed: {exc}")
+
     hotkeys = [
         (HOTKEY_TOGGLE_LISTEN, _toggle_listening, "Toggle Listening"),
         (HOTKEY_MUTE, _toggle_mute, "Toggle Mute"),
         (HOTKEY_DASHBOARD, _open_dashboard, "Open Dashboard"),
         (HOTKEY_SETTINGS, _open_settings, "Open Settings"),
+        (HOTKEY_TOGGLE_DROP, _toggle_drop_widget, "Toggle Drop Widget"),
     ]
 
     for combo, handler, label in hotkeys:
@@ -3397,7 +3510,7 @@ def main():
         drop_path = Path(__file__).resolve().parent / "klatsch_drop.py"
         if drop_path.exists():
             try:
-                subprocess.Popen(
+                state._drop_widget_proc = subprocess.Popen(
                     [sys.executable, str(drop_path)],
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )

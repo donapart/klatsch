@@ -111,6 +111,15 @@ class DropWidget:
             outline=_GREEN, width=4, fill=_BG,
         )
 
+        # Peer count badge — top-right corner, hidden until peers present
+        self._badge = self._canvas.create_text(
+            _SIZE - 6, 6,
+            text="", font=("Segoe UI", 8, "bold"), fill=_YELLOW, anchor="ne",
+        )
+
+        # Current volume for mouse wheel delta
+        self._current_volume: int = 100
+
         # Logo — try klatsch.png, fall back to text paw
         self._img = None
         logo_path = Path(__file__).resolve().parent / "klatsch.png"
@@ -137,6 +146,8 @@ class DropWidget:
         self._canvas.bind("<B1-Motion>", self._on_drag)
         self._canvas.bind("<ButtonRelease-1>", self._on_release)
         self._canvas.bind("<Button-3>", self._show_menu)
+        # Mouse wheel: adjust TTS volume
+        self._canvas.bind("<MouseWheel>", self._on_wheel)
 
         # File drop — try tkinterdnd2
         self._has_dnd = False
@@ -230,6 +241,19 @@ class DropWidget:
         last = summary[-1]["detail"] if summary else ""
         self._last_status = last
 
+        # Volume tracking for mouse wheel
+        vol = data.get("volume")
+        if vol is not None:
+            self._current_volume = int(vol)
+
+        # Peer badge
+        peers = data.get("peers", [])
+        peer_count = len(peers)
+        self._canvas.itemconfig(
+            self._badge,
+            text=str(peer_count) if peer_count > 0 else "",
+        )
+
         if speaking:
             self._set_ring(_YELLOW)
         elif paused:
@@ -241,6 +265,25 @@ class DropWidget:
 
     def _set_ring(self, color: str):
         self._canvas.itemconfig(self._ring, outline=color)
+
+    # ── Mouse wheel volume ────────────────────────────────────────────────────
+    def _on_wheel(self, ev):
+        delta = 10 if ev.delta > 0 else -10
+        new_vol = max(0, min(100, self._current_volume + delta))
+        self._current_volume = new_vol
+        threading.Thread(target=self._set_volume, args=(new_vol,), daemon=True).start()
+
+    def _set_volume(self, vol: int):
+        if requests is None:
+            return
+        try:
+            requests.post(
+                f"http://localhost:{self._peer_port}/volume",
+                json={"volume": vol},
+                timeout=2,
+            )
+        except Exception:
+            pass  # best-effort
 
     # ── Tooltip ──────────────────────────────────────────────────────────────
     def _show_tooltip(self, ev):

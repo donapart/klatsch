@@ -64,6 +64,9 @@ _I18N = {
         "toggle_listen": "Mithören An/Aus",
         "offline": "Klatsch ist nicht erreichbar",
         "quit": "Beenden",
+        "history": "Verlauf",
+        "you": "Du",
+        "assistant": "Klatsch",
     },
     "en": {
         "title": "Klatsch 🐾",
@@ -91,32 +94,57 @@ _I18N = {
         "toggle_listen": "Toggle Listening",
         "offline": "Klatsch is not reachable",
         "quit": "Quit",
+        "history": "History",
+        "you": "You",
+        "assistant": "Klatsch",
     },
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Colors & Style
+# Colors & Style (theme-aware)
 # ──────────────────────────────────────────────────────────────────────────────
-_BG = "#1e1e2e"
-_BG_CARD = "#2a2a3e"
-_FG = "#e0e0e0"
-_FG_DIM = "#888899"
-_GREEN = "#50c878"
-_RED = "#e05050"
-_YELLOW = "#f0c040"
-_BLUE = "#5090e0"
-_ACCENT = "#7c6ff0"
+_THEMES = {
+    "dark": {
+        "bg":      "#1e1e2e",
+        "bg_card": "#2a2a3e",
+        "fg":      "#e0e0e0",
+        "fg_dim":  "#888899",
+    },
+    "light": {
+        "bg":      "#f0f0f5",
+        "bg_card": "#e0e0ea",
+        "fg":      "#1e1e2e",
+        "fg_dim":  "#666677",
+    },
+}
+
+# Module-level color vars; overwritten in show_popup() from config
+_BG      = _THEMES["dark"]["bg"]
+_BG_CARD = _THEMES["dark"]["bg_card"]
+_FG      = _THEMES["dark"]["fg"]
+_FG_DIM  = _THEMES["dark"]["fg_dim"]
+_GREEN   = "#50c878"
+_RED     = "#e05050"
+_YELLOW  = "#f0c040"
+_BLUE    = "#5090e0"
+_ACCENT  = "#7c6ff0"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Status Popup Window
 # ──────────────────────────────────────────────────────────────────────────────
 class StatusPopup:
-    def __init__(self, port: int = 7790, lang: str = "de", always_on_top: bool = True):
+    def __init__(self, port: int = 7790, lang: str = "de", always_on_top: bool = True,
+                 theme: str = "dark"):
         self.port = port
         self.s = _I18N.get(lang, _I18N["de"])
         self.base_url = f"http://127.0.0.1:{port}"
         self._alive = True
+
+        # Apply theme colors to module-level vars so all widgets use them
+        global _BG, _BG_CARD, _FG, _FG_DIM
+        t = _THEMES.get(theme, _THEMES["dark"])
+        _BG, _BG_CARD, _FG, _FG_DIM = t["bg"], t["bg_card"], t["fg"], t["fg_dim"]
 
         self.root = tk.Tk()
         self.root.title("Klatsch")
@@ -132,9 +160,9 @@ class StatusPopup:
             except tk.TclError:
                 pass
 
-        # Position: bottom-right above taskbar
+        # Position: bottom-right above taskbar, then slide in from right
         self._width = 320
-        self._height = 460
+        self._height = 540  # taller to fit history section
         self._position_window()
 
         # Allow dragging — bound after UI build (attached to header)
@@ -154,9 +182,19 @@ class StatusPopup:
     def _position_window(self):
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        x = sw - self._width - 12
-        y = sh - self._height - 60  # above taskbar
-        self.root.geometry(f"{self._width}x{self._height}+{x}+{y}")
+        self._target_x = sw - self._width - 12
+        self._target_y = sh - self._height - 60  # above taskbar
+        # Start off-screen to the right, then slide in
+        self.root.geometry(f"{self._width}x{self._height}+{sw}+{self._target_y}")
+        self.root.after(30, self._slide_in)
+
+    def _slide_in(self):
+        """Animate the popup sliding in from the right edge."""
+        x = self.root.winfo_x()
+        if x > self._target_x:
+            x = max(self._target_x, x - 40)
+            self.root.geometry(f"+{x}+{self._target_y}")
+            self.root.after(16, self._slide_in)
 
     def _drag_start(self, event):
         self._drag_x = event.x_root - self.root.winfo_x()
@@ -288,6 +326,35 @@ class StatusPopup:
         self._make_btn(
             btn_frame, self.s["open_settings"], self._on_settings, 2
         )
+
+        # ── Conversation history ──────────────────────────────────────────
+        sep = tk.Frame(main, bg=_FG_DIM, height=1)
+        sep.pack(fill="x", pady=(8, 4))
+
+        hist_hdr = tk.Frame(main, bg=_BG)
+        hist_hdr.pack(fill="x")
+        tk.Label(
+            hist_hdr, text=self.s["history"], font=("Segoe UI", 9, "bold"),
+            bg=_BG, fg=_FG_DIM, anchor="w",
+        ).pack(side="left")
+
+        self._hist_frame = tk.Frame(main, bg=_BG)
+        self._hist_frame.pack(fill="x", pady=(4, 0))
+
+        # Pre-build 3 entry slots (Q + A pairs)
+        self._hist_entries: list[tuple[tk.Label, tk.Label]] = []
+        for _ in range(3):
+            q_lbl = tk.Label(
+                self._hist_frame, text="", font=("Segoe UI", 8, "bold"),
+                bg=_BG, fg=_ACCENT, anchor="w", wraplength=280, justify="left",
+            )
+            q_lbl.pack(fill="x")
+            a_lbl = tk.Label(
+                self._hist_frame, text="", font=("Segoe UI", 8),
+                bg=_BG, fg=_FG, anchor="w", wraplength=280, justify="left",
+            )
+            a_lbl.pack(fill="x", pady=(0, 4))
+            self._hist_entries.append((q_lbl, a_lbl))
 
     def _make_card(self, parent, title: str, value: str, row: int, col: int):
         card = tk.Frame(parent, bg=_BG_CARD, padx=10, pady=7)
@@ -431,6 +498,17 @@ class StatusPopup:
         ver = d.get("version", "")
         self._ver_lbl.configure(text=f"v{ver}" if ver else "")
 
+        # Conversation history
+        history = d.get("history", [])
+        for i, (q_lbl, a_lbl) in enumerate(self._hist_entries):
+            if i < len(history):
+                entry = history[i]
+                q_lbl.configure(text=f"{self.s['you']}: {entry.get('q', '')[:80]}")
+                a_lbl.configure(text=f"{self.s['assistant']}: {entry.get('a', '')[:160]}")
+            else:
+                q_lbl.configure(text="")
+                a_lbl.configure(text="")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry point
@@ -442,7 +520,8 @@ def show_popup(port: int | None = None, lang: str | None = None):
     aot = cfg.get("always_on_top", True)
     if isinstance(aot, str):
         aot = aot not in ("0", "false", "no", "")
-    popup = StatusPopup(port=p, lang=la, always_on_top=bool(aot))
+    theme = cfg.get("theme", "dark")
+    popup = StatusPopup(port=p, lang=la, always_on_top=bool(aot), theme=str(theme))
     popup.root.mainloop()
 
 

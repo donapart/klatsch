@@ -62,7 +62,17 @@ STRINGS = {
         "show_drop_widget": "Schwebendes Drop-Widget anzeigen",
         "show_drop_widget_desc": "Kleines schwebend-Logo-Fenster für schnellen Zugriff und Datei-Ablage",
         "toast_notifications": "Toast-Benachrichtigungen",
-        "toast_notifications_desc": "Windows-Benachrichtigungen bei Erinnerungen, Antworten und Ereignissen",
+        "toast_notifications_desc": "Windows-Benachrichtigungen ein/aus (Master-Schalter)",
+        "toast_reminders": "Erinnerungs-Toasts",
+        "toast_reminders_desc": "Benachrichtigungen bei fälligen Erinnerungen anzeigen",
+        "toast_replies": "Antwort-Toasts",
+        "toast_replies_desc": "Benachrichtigungen bei Gateway-Antworten anzeigen",
+        "toast_peers": "Peer-Toasts",
+        "toast_peers_desc": "Benachrichtigungen bei Peer-Ereignissen anzeigen",
+        "toast_errors": "Fehler-Toasts",
+        "toast_errors_desc": "Benachrichtigungen bei Fehlern und Warnungen anzeigen",
+        "theme": "Farbmodus",
+        "theme_desc": "Erscheinungsbild des Status-Popups (dunkel / hell)",
         "peer_port": "HTTP-Port",
         "peer_port_desc": "Port für das lokale HTTP-API und Dashboard",
         "peers_config": "Peers-Konfiguration",
@@ -93,6 +103,8 @@ STRINGS = {
         "hotkey_dashboard_desc": "Tastenkürzel für Live-Dashboard im Browser",
         "hotkey_settings": "Einstellungen öffnen",
         "hotkey_settings_desc": "Tastenkürzel für dieses Einstellungsfenster",
+        "hotkey_toggle_drop": "Drop-Widget An/Aus",
+        "hotkey_toggle_drop_desc": "Tastenkürzel um das schwebende Drop-Widget ein-/auszublenden",
         "hotkey_hint": "Format: ctrl+shift+k, alt+f1, etc. Leer = deaktiviert",
         "save": "Speichern",
         "cancel": "Abbrechen",
@@ -164,7 +176,17 @@ STRINGS = {
         "show_drop_widget": "Show Floating Drop Widget",
         "show_drop_widget_desc": "Small floating logo window for quick access and file drops",
         "toast_notifications": "Toast Notifications",
-        "toast_notifications_desc": "Windows notifications for reminders, replies, and events",
+        "toast_notifications_desc": "Windows notifications on/off (master switch)",
+        "toast_reminders": "Reminder Toasts",
+        "toast_reminders_desc": "Show notifications for due reminders",
+        "toast_replies": "Reply Toasts",
+        "toast_replies_desc": "Show notifications for gateway replies",
+        "toast_peers": "Peer Toasts",
+        "toast_peers_desc": "Show notifications for peer events",
+        "toast_errors": "Error Toasts",
+        "toast_errors_desc": "Show notifications for errors and warnings",
+        "theme": "Color Theme",
+        "theme_desc": "Appearance of the status popup (dark / light)",
         "peer_port": "HTTP Port",
         "peer_port_desc": "Port for the local HTTP API and dashboard",
         "peers_config": "Peers Configuration",
@@ -195,6 +217,8 @@ STRINGS = {
         "hotkey_dashboard_desc": "Hotkey to open the live dashboard in browser",
         "hotkey_settings": "Open Settings",
         "hotkey_settings_desc": "Hotkey to open this settings window",
+        "hotkey_toggle_drop": "Toggle Drop Widget",
+        "hotkey_toggle_drop_desc": "Hotkey to show/hide the floating drop widget",
         "hotkey_hint": "Format: ctrl+shift+k, alt+f1, etc. Empty = disabled",
         "save": "Save",
         "cancel": "Cancel",
@@ -264,9 +288,15 @@ DEFAULT_CONFIG = {
     "hotkey_mute": "ctrl+shift+m",
     "hotkey_dashboard": "ctrl+shift+d",
     "hotkey_settings": "ctrl+shift+comma",
+    "hotkey_toggle_drop": "",
     "always_on_top": True,
     "show_drop_widget": False,
     "toast_notifications": True,
+    "toast_reminders": True,
+    "toast_replies": True,
+    "toast_peers": True,
+    "toast_errors": True,
+    "theme": "dark",
 }
 
 
@@ -308,9 +338,15 @@ def load_config() -> dict:
         "HOTKEY_MUTE": "hotkey_mute",
         "HOTKEY_DASHBOARD": "hotkey_dashboard",
         "HOTKEY_SETTINGS": "hotkey_settings",
+        "HOTKEY_TOGGLE_DROP": "hotkey_toggle_drop",
         "ALWAYS_ON_TOP": "always_on_top",
         "SHOW_DROP_WIDGET": "show_drop_widget",
         "TOAST_NOTIFICATIONS": "toast_notifications",
+        "TOAST_REMINDERS": "toast_reminders",
+        "TOAST_REPLIES": "toast_replies",
+        "TOAST_PEERS": "toast_peers",
+        "TOAST_ERRORS": "toast_errors",
+        "THEME": "theme",
     }
     for env_key, cfg_key in env_map.items():
         val = os.getenv(env_key)
@@ -495,8 +531,29 @@ class KlatschSettings:
                          desc=self.s["always_on_top_desc"]); r += 2
         self._add_check(frame, self.s["show_drop_widget"], "show_drop_widget", r,
                          desc=self.s["show_drop_widget_desc"]); r += 2
+
+        # Theme combo
+        ttk.Label(frame, text=self.s["theme"]).grid(row=r, column=0, sticky="w", padx=4, pady=3)
+        theme_var = tk.StringVar(value=str(self.cfg.get("theme", "dark")))
+        theme_combo = ttk.Combobox(
+            frame, textvariable=theme_var, values=["dark", "light"], state="readonly", width=8,
+        )
+        theme_combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
+        self.vars["theme"] = theme_var
+        self._add_desc(frame, self.s["theme_desc"], r + 1); r += 2
+
+        # Toast section: master switch + 4 per-event checkboxes
         self._add_check(frame, self.s["toast_notifications"], "toast_notifications", r,
-                         desc=self.s["toast_notifications_desc"])
+                         desc=self.s["toast_notifications_desc"]); r += 2
+        # Indent the per-event checkboxes slightly
+        for key in ("toast_reminders", "toast_replies", "toast_peers", "toast_errors"):
+            ttk.Label(frame, text="").grid(row=r, column=0)  # spacer for indent
+            chk_frame = ttk.Frame(frame)
+            chk_frame.grid(row=r, column=0, columnspan=2, sticky="w", padx=(24, 4))
+            var = tk.BooleanVar(value=bool(self.cfg.get(key, True)))
+            ttk.Checkbutton(chk_frame, text=self.s[key], variable=var).pack(side="left")
+            self.vars[key] = var
+            self._add_desc(frame, self.s[key + "_desc"], r + 1); r += 2
 
     def _build_audio_tab(self):
         frame = ttk.Frame(self.notebook, padding=10)
@@ -660,7 +717,9 @@ class KlatschSettings:
         self._add_entry(frame, self.s["hotkey_dashboard"], "hotkey_dashboard", r,
                          desc=self.s["hotkey_dashboard_desc"]); r += 2
         self._add_entry(frame, self.s["hotkey_settings"], "hotkey_settings", r,
-                         desc=self.s["hotkey_settings_desc"])
+                         desc=self.s["hotkey_settings_desc"]); r += 2
+        self._add_entry(frame, self.s["hotkey_toggle_drop"], "hotkey_toggle_drop", r,
+                         desc=self.s["hotkey_toggle_drop_desc"])
 
     def _build_files_tab(self):
         """Drag & drop area for sending files to Klatsch."""
