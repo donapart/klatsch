@@ -210,6 +210,17 @@ def _cfg(env_key: str, json_key: str, default: str) -> str:
         return val
     return str(_SETTINGS.get(json_key, default))
 
+
+def _cfg_bool(env_key: str, json_key: str, default: bool = True) -> bool:
+    """Resolve boolean config: env var (0/1) > settings.json (bool) > default."""
+    val = os.getenv(env_key)
+    if val is not None:
+        return val not in ("0", "false", "no", "")
+    raw = _SETTINGS.get(json_key, default)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw) not in ("0", "false", "no", "")
+
 GATEWAY_URL = _cfg("GATEWAY_URL", "gateway_url", "http://192.168.0.67:18789")
 GATEWAY_TOKEN = _cfg("GATEWAY_TOKEN", "gateway_token", "opensesame")
 AGENT_ID = _cfg("AGENT_ID", "agent_id", "main")
@@ -252,12 +263,12 @@ CONVERSATION_TIMEOUT = float(
 
 # Audio ducking: reduce other apps' volume when Klatsch speaks
 DUCKING_LEVEL = float(_cfg("DUCKING_LEVEL", "ducking_level", "0.25"))  # 25% of original
-DUCKING_ENABLED = _cfg("DUCKING_ENABLED", "ducking_enabled", "1") != "0"
+DUCKING_ENABLED = _cfg_bool("DUCKING_ENABLED", "ducking_enabled", True)
 
 # Auto-discovery: Klatsch instances announce via UDP broadcast
 DISCOVERY_PORT = int(_cfg("DISCOVERY_PORT", "discovery_port", "7791"))
 DISCOVERY_INTERVAL = int(_cfg("DISCOVERY_INTERVAL", "discovery_interval", "15"))  # seconds
-DISCOVERY_ENABLED = _cfg("DISCOVERY_ENABLED", "discovery_enabled", "1") != "0"
+DISCOVERY_ENABLED = _cfg_bool("DISCOVERY_ENABLED", "discovery_enabled", True)
 
 # Dashboard WebSocket port
 DASHBOARD_PORT = int(_cfg("DASHBOARD_PORT", "dashboard_port", "7792"))
