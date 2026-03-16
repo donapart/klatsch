@@ -63,6 +63,17 @@ import time
 import wave
 from pathlib import Path
 
+# Ensure stdout/stderr handle Unicode (pythonw.exe has no console → NoneType)
+for _stream in ("stdout", "stderr"):
+    _s = getattr(sys, _stream, None)
+    if _s is None:
+        setattr(sys, _stream, open(os.devnull, "w", encoding="utf-8"))
+    elif hasattr(_s, "reconfigure"):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 import numpy as np
 import requests
 import sounddevice as sd
@@ -3248,13 +3259,18 @@ def main():
     elif not HAS_PYCAW and DUCKING_ENABLED:
         log.info("Audio ducking: pycaw not available (pip install pycaw comtypes)")
 
-    banner = f"Klatsch 🐾  ·  {HOST_NAME}  ·  v{KLATSCH_VERSION}"
+    banner = f"Klatsch  ·  {HOST_NAME}  ·  v{KLATSCH_VERSION}"
     pad = len(banner) + 4
-    top = '\u256d' + '\u2500' * pad + '\u256e'
-    bot = '\u2570' + '\u2500' * pad + '\u256f'
-    print(f"{Fore.GREEN}{top}{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}\u2502  {banner}  \u2502{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}{bot}{Style.RESET_ALL}")
+    top = "+" + "-" * pad + "+"
+    mid = "|  " + banner + "  |"
+    bot = "+" + "-" * pad + "+"
+    try:
+        print(f"{Fore.GREEN}{top}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{mid}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}{bot}{Style.RESET_ALL}")
+    except (UnicodeEncodeError, OSError):
+        # pythonw.exe or cp1252 console — fall back to log
+        log.info(banner)
 
     # Load Whisper
     if not HAS_WHISPER:
