@@ -78,7 +78,6 @@ import numpy as np
 import requests
 import sounddevice as sd
 from colorama import Fore, Style, init as colorama_init
-from scipy.io.wavfile import write as write_wav
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 try:
